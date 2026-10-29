@@ -133,7 +133,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold-light); ou
 .card-slot.is-dismissed { opacity: 0; pointer-events: none; }
 .app[data-state="ANIMATING"] .card-float { animation-play-state: paused; }
 .app[data-state="ANIMATING"] .card-button { pointer-events: none; }
-/* Flatten the settled faces so text is rasterized sharply after the 3D flip. */
+/* Flatten settled faces; mouse and device orientation tilt the whole surface. */
 .app[data-state="REVEALED"] .card-slot,
 .app[data-state="REVEALED"] .card-float,
 .app[data-state="REVEALED"] .card-button,
@@ -141,6 +141,13 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold-light); ou
 .app[data-state="REVEALED"] .card-rotor,
 .app[data-state="REVEALED"] .card-front { transform: none; }
 .app[data-state="REVEALED"] .card-back { display: none; }
+.app[data-state="REVEALED"] .card-button { pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .app[data-state="REVEALED"] .card-slot.is-tilting .card-button {
+    transform: perspective(800px) translate3d(var(--tilt-shift-x, 0px), var(--tilt-shift-y, 0px), 12px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+    transition: transform 140ms ease-out;
+  }
+}
 .stage-horizon { position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); width: min(780px, 88vw); height: 45%; border-bottom: 1px solid #bea46d0b; border-radius: 50%; background: radial-gradient(ellipse at 50% 100%, #ba9e6209, transparent 62%); pointer-events: none; }
 
 .experience-controls { display: grid; place-items: center; z-index: 4; text-align: center; }

@@ -18,12 +18,18 @@ npm run dev -- --port 8080
 
 ## Build und Export
 
+Einmalig die Entwicklungsabhängigkeit für die Minifizierung installieren:
+
+```sh
+npm install
+```
+
 ```sh
 npm run build
 npm run export
 ```
 
-Beide Befehle erstellen dieselbe eigenständige Datei: `dist/index.html`. Der Build integriert HTML, CSS, JavaScript, Kartendaten und SVG-Grafiken direkt in diese Datei, schützt schließende Script-/Style-Sequenzen und validiert den Export. `dist/` wird vor dem Schreiben bereinigt und enthält anschließend ausschließlich `index.html`. Die Quelldateien bleiben erhalten. Bei einem Fehler endet der Build mit Exit-Code 1.
+Beide Befehle erstellen dieselbe eigenständige, minifizierte Datei: `dist/index.html`. Der Build integriert HTML, CSS, JavaScript, Kartendaten und SVG-Grafiken direkt in diese Datei. `html-minifier-terser` verkleinert HTML sowie eingebettetes CSS und JavaScript; schließende Script-/Style-Sequenzen bleiben geschützt. Der Export wird vor und nach der Minifizierung validiert. `dist/` wird vor dem Schreiben bereinigt und enthält anschließend ausschließlich `index.html`. Die Quelldateien bleiben lesbar erhalten. Bei einem Fehler endet der Build mit Exit-Code 1.
 
 Der Export lässt sich direkt im Browser öffnen oder auf jedem statischen HTTP-Server bereitstellen. Zum lokalen Prüfen des fertigen Exports:
 
@@ -36,6 +42,10 @@ npm run dev -- --dist
 Wähle eine der verdeckten Karten per Klick, Touch oder Tastatur. Tab setzt den Fokus, Enter oder Leertaste zieht die Karte. Nur die gewählte Karte wird aus dem verbleibenden Pool entfernt. Die Auswahl nutzt `crypto.getRandomValues()` mit unverzerrter Zufallsauswahl; angebotene Karten sind innerhalb einer Runde verschieden. Bei zwei oder einer verbleibenden Karte verkleinert sich die Auswahl entsprechend.
 
 Nach einer Ziehung bleibt die aufgedeckte Karte sichtbar. Die nächste Karte lässt sich frühestens 24 Stunden nach der letzten Auswahl ziehen. Der dezente Timer oben rechts zeigt die verbleibende Zeit und aktualisiert sich automatisch. Nach Ablauf erscheint „DRAW AGAIN“; damit öffnet sich der nächste Kartenfächer. Ein Neuladen stellt die zuletzt gezogene Karte und ihre Wartezeit wieder her. Bereits geöffnete Tabs übernehmen neue Ziehungen aus demselben Browser-Speicher.
+
+Mit einer Maus neigt sich die aufgedeckte Karte beim Bewegen des Zeigers über die Karte im 3D-Raum, bis maximal 14 Grad pro Achse. Sie folgt dem Zeiger außerdem um bis zu acht Pixel und hebt sich dabei leicht an. Beim Verlassen kehrt sie sanft in ihre Ausgangslage zurück. Der Effekt funktioniert auch mit einer nach dem Neuladen wiederhergestellten Karte. Finger- und Stiftbewegungen lösen diesen Maus-Effekt nicht aus; die Systemeinstellung für reduzierte Bewegung deaktiviert das Kippen vollständig.
+
+Auf Mobilgeräten reagiert die aufgedeckte Karte zusätzlich auf das Neigen des Geräts, sofern der Browser Orientierungsdaten ohne neue Zustimmung liefert. Die erste gültige Messung kalibriert die aktuelle Haltung als neutral; Hoch- und Querformat werden berücksichtigt. Die App ruft niemals `requestPermission()` auf. Bietet der Browser diese Methode an, liest die App nur den bestehenden Status für Beschleunigungs- und Gyroskopsensoren aus und aktiviert den Effekt ausschließlich, wenn beide bereits erlaubt sind. Bei ausstehender Zustimmung, verweigertem oder nicht auslesbarem Status bleibt die Karte ruhig. Browser ohne diese Berechtigungsmethode können Orientierungsereignisse direkt liefern. Voraussetzung ist ein sicherer Kontext, beim Hosting also HTTPS. Sensordaten werden nur für die sichtbare aufgedeckte Karte verarbeitet und weder gespeichert noch übertragen. Bei Fokusverlust, Hintergrundwechsel, Bildschirmrotation oder reduzierter Bewegung wird der Effekt zurückgesetzt und gegebenenfalls neu kalibriert.
 
 Die Oberfläche konzentriert sich auf die Karten: ohne Header, Fortschrittsanzeige oder allgemeinen Reset. Unten steht ein dezenter „made by oliverjessner.at“-Link. Nach Karte 50 lässt sich die abgeschlossene Sammlung ansehen. „START A NEW DECK“ wird erst nach Ablauf der aktuellen Wartezeit verfügbar und setzt das Deck nach Bestätigung zurück. Eine bevorzugte reduzierte Bewegung wird berücksichtigt; Fokusmarkierungen und Screenreader-Ankündigungen unterstützen die Bedienung.
 
@@ -66,7 +76,7 @@ package.json
 README.md
 ```
 
-Der Build und Entwicklungsserver verwenden ausschließlich Node.js-Bordmittel. Die Oberfläche benötigt einen aktuellen Browser mit CSS-3D-Transforms, Web Animations API, Web Crypto und localStorage; bei eingeschränktem Speicher bleibt die aktuelle Sitzung nutzbar.
+Der Entwicklungsserver verwendet ausschließlich Node.js-Bordmittel. Für den Build wird `html-minifier-terser` als Entwicklungsabhängigkeit benötigt; die exportierte Oberfläche hat weiterhin keine Laufzeit-Abhängigkeiten. Sie benötigt einen aktuellen Browser mit CSS-3D-Transforms, Web Animations API, Web Crypto und localStorage; bei eingeschränktem Speicher bleibt die aktuelle Sitzung nutzbar.
 
 ## Tests
 
@@ -74,4 +84,4 @@ Der Build und Entwicklungsserver verwenden ausschließlich Node.js-Bordmittel. D
 npm test
 ```
 
-Der integrierte Node.js-Testlauf prüft den Single-File-Build in isolierten temporären Verzeichnissen: Inline-Inhalte, sichere Script-/Style-Endtags, Bereinigung alter Exportdateien und die Ablehnung separater Ressourcen oder Laufzeit-Netzwerkzugriffe. Weitere Tests führen den unveränderten App-Code mit einem kleinen DOM-Adapter und kontrollierter Uhr aus: Speicherung vor dem Reveal, Schutz vor Mehrfachauswahl, die exakte 24-Stunden-Grenze, Neuladen, Migration älterer Speicherstände, Änderungen aus anderen Tabs und Betrieb ohne localStorage. Diese Tests ersetzen keine visuelle Prüfung im Browser.
+Der integrierte Node.js-Testlauf prüft den Single-File-Build in isolierten temporären Verzeichnissen: Minifizierung mit Erhalt bedeutungsvoller Leerzeichen und JavaScript-Werte, Inline-Inhalte, sichere Script-/Style-Endtags, Bereinigung alter Exportdateien und die Ablehnung separater Ressourcen oder Laufzeit-Netzwerkzugriffe. Weitere Tests führen den unveränderten App-Code mit einem kleinen DOM-Adapter und kontrollierter Uhr aus: Speicherung vor dem Reveal, Schutz vor Mehrfachauswahl, die exakte 24-Stunden-Grenze, Neuladen, Migration älterer Speicherstände, Änderungen aus anderen Tabs und Betrieb ohne localStorage. Sie prüfen außerdem Maus- und Sensor-Tilt, Kalibrierung, Bildschirmachsen, ungültige Messwerte, den Verzicht auf Berechtigungsanfragen sowie das Zurücksetzen bei Zeiger-, Fenster- und Medieneinstellungsänderungen. Diese Tests ersetzen keine visuelle Prüfung im Browser oder auf einem echten Mobilgerät.

@@ -10,6 +10,12 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function escapeRawText(text, tag) {
+  return tag === 'style'
+    ? text.replace(/<\/style/gi, (value) => `\\3c /${value.slice(2)}`)
+    : text.replace(/<\/script/gi, (value) => `<\\/${value.slice(2)}`);
+}
+
 function validateExport(html) {
   assert(/<!doctype html>/i.test(html), 'The export needs an HTML5 doctype.');
   assert(/<style\b[^>]*>[\s\S]+?<\/style>/i.test(html), 'Inline CSS is missing.');
@@ -40,6 +46,7 @@ function validateExport(html) {
 }
 
 try {
+  const { minify } = await import('html-minifier-terser');
   const [template, css, javascript] = await Promise.all([
     readFile(path.join(source, 'index.html'), 'utf8'),
     readFile(path.join(source, 'styles.css'), 'utf8'),
@@ -53,12 +60,38 @@ try {
 
   // HTML raw-text elements terminate even inside CSS/JS strings or comments.
   // These language-native escapes preserve the text while protecting the parser.
-  const safeCss = css.replace(/<\/style/gi, (value) => `\\3c /${value.slice(2)}`);
-  const safeJavascript = javascript.replace(/<\/script/gi, (value) => `<\\/${value.slice(2)}`);
-  const html = template
+  const safeCss = escapeRawText(css, 'style');
+  const safeJavascript = escapeRawText(javascript, 'script');
+  const inlined = template
     .replace(stylesheet, () => `<style>\n${safeCss}\n</style>`)
     .replace(script, () => `<script>\n${safeJavascript}\n</script>`);
 
+  // Validate the original sources before optimizers can discard any references.
+  validateExport(inlined);
+  const log = (error) => { throw error instanceof Error ? error : new Error(String(error)); };
+  async function minifyRawText(tag, text, options) {
+    const open = `<${tag}>`;
+    const close = `</${tag}>`;
+    const result = await minify(`${open}${text}${close}`, { ...options, log });
+    assert(result.startsWith(open) && result.endsWith(close), `Unexpected minified ${tag} wrapper.`);
+    // Protect the HTML parser again in case an optimizer rewrites string escapes.
+    return escapeRawText(result.slice(open.length, -close.length), tag);
+  }
+  const compactCss = await minifyRawText('style', safeCss, {
+    minifyCSS: { level: 1, rebase: false },
+  });
+  const compactJavascript = await minifyRawText('script', safeJavascript, {
+    minifyJS: { compress: false, mangle: false, format: { comments: false, inline_script: true } },
+  });
+  const html = await minify(template
+    .replace(stylesheet, () => `<style>${compactCss}</style>`)
+    .replace(script, () => `<script>${compactJavascript}</script>`), {
+    collapseWhitespace: true,
+    conservativeCollapse: true,
+    removeComments: true,
+    keepClosingSlash: true,
+    log,
+  });
   validateExport(html);
   // Only the generated destination is removed; source and repository files stay intact.
   await rm(destination, { recursive: true, force: true });
@@ -72,7 +105,7 @@ try {
   assert(written === html, 'The written export differs from the generated HTML.');
   const bytes = Buffer.byteLength(written, 'utf8');
   console.log(`Exported dist/index.html — ${(bytes / 1024).toFixed(2)} KiB (${bytes.toLocaleString('en-US')} bytes).`);
-  console.log('Validated: one file, inline CSS and JavaScript, no runtime resources or network requests.');
+  console.log('Validated: one minified file, inline CSS and JavaScript, no runtime resources or network requests.');
 } catch (error) {
   console.error(`Build failed: ${error.message}`);
   process.exitCode = 1;

@@ -8,7 +8,10 @@ import { execFileSync } from 'node:child_process';
 import vm from 'node:vm';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const builder = await readFile(path.join(project, 'scripts/build.mjs'), 'utf8');
+// Fixtures live outside the checkout, but use the installed project dependency.
+const minifier = import.meta.resolve('html-minifier-terser');
+const builder = (await readFile(path.join(project, 'scripts/build.mjs'), 'utf8'))
+  .replace("'html-minifier-terser'", JSON.stringify(minifier));
 const template = '<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="./styles.css"></head><body><main>Hustle Cards</main><script src="./app.js" defer></script></body></html>';
 
 async function fixture(t, { html = template, css = 'body { color: #fff; }', js = 'globalThis.ready = true;' } = {}) {
@@ -44,10 +47,51 @@ test('build embeds all source, removes stale output, and writes only index.html'
   assert.match(app.build(), /Exported dist\/index\.html/);
   const output = await app.output();
   assert.deepEqual(await readdir(path.join(app.directory, 'dist')), ['index.html']);
-  assert.match(output, /<style>\s*body \{ color: #fff; \}/);
-  assert.match(output, /<script>\s*globalThis\.ready = true;/);
+  assert.match(output, /<style>body\{color:#fff\}<\/style>/);
+  assert.match(output, /<script>globalThis\.ready=true;?<\/script>/);
   assert.doesNotMatch(output, /(?:src|href)=["']\.\//);
   assert.equal(await readFile(path.join(app.directory, 'src/app.js'), 'utf8'), 'globalThis.ready = true;');
+});
+
+test('build minifies HTML, CSS and JavaScript while preserving meaningful whitespace and literals', async (t) => {
+  const html = template.replace('<main>Hustle Cards</main>', `
+    <!-- disposable markup comment -->
+    <main><span>Hustle</span> <span>Cards</span></main>
+    <pre>  keep\n    this spacing</pre>
+    <textarea>  keep\n    this too</textarea>
+  `);
+  const css = '/* disposable style comment */\nbody { color: #fff; margin: 0px; }\nbody::before { content: "A  B"; }';
+  const js = `// disposable script comment
+    const pattern = /a\\s+b/;
+    const message = \`first line\nsecond line\`;
+    function value() {
+      return
+      { unreachable: true };
+    }
+    globalThis.result = [pattern.test('a   b'), message, value()];
+  `;
+  const app = await fixture(t, { html, css, js });
+  app.build();
+  const output = await app.output();
+  assert.doesNotMatch(output, /disposable/);
+  assert.ok(output.includes('<span>Hustle</span> <span>Cards</span>'));
+  assert.ok(output.includes('<pre>  keep\n    this spacing</pre>'));
+  assert.ok(output.includes('<textarea>  keep\n    this too</textarea>'));
+  assert.match(output, /content:["']A  B["']/);
+  const embeddedJs = output.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const embeddedCss = output.match(/<style>([\s\S]*?)<\/style>/)?.[1];
+  assert.ok(embeddedJs.length < js.length);
+  assert.ok(embeddedCss.length < css.length);
+  const context = {};
+  vm.runInNewContext(embeddedJs, context);
+  assert.deepEqual(Array.from(context.result), [true, 'first line\nsecond line', undefined]);
+});
+
+test('JavaScript minification errors fail before replacing the existing export', async (t) => {
+  const app = await fixture(t, { js: 'const = ;' });
+  await writeFile(path.join(app.directory, 'dist/index.html'), 'previous export');
+  assertRejected(app.build, /Build failed:/);
+  assert.equal(await app.output(), 'previous export');
 });
 
 test('raw-text closing tags are escaped case-insensitively without changing JavaScript strings', async (t) => {
@@ -62,7 +106,7 @@ test('raw-text closing tags are escaped case-insensitively without changing Java
   assert.ok(embeddedCss);
   assert.doesNotMatch(embeddedJs, /<\/script/i);
   assert.doesNotMatch(embeddedCss, /<\/style/i);
-  assert.match(embeddedCss, /\\3c \/StYlE>/);
+  assert.match(embeddedCss, /\\3c\s*\/StYlE>/i);
   assert.equal([...output.matchAll(/<\/script>/gi)].length, 1);
   assert.equal([...output.matchAll(/<\/style>/gi)].length, 1);
   const context = {};

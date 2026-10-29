@@ -1,16 +1,19 @@
 {
-  "name": "hustle-cards",
-  "version": "1.0.0",
-  "private": true,
-  "description": "A premium, offline-ready card-draw experience in a single HTML file.",
-  "type": "module",
-  "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "build": "node scripts/build.mjs",
-    "export": "node scripts/build.mjs",
-    "test": "node --test"
-  },
-  "engines": {
-    "node": ">=20"
-  }
+    "name": "hustle-cards",
+    "version": "0.1.1",
+    "private": true,
+    "description": "A premium, offline-ready card-draw experience in a single HTML file.",
+    "type": "module",
+    "scripts": {
+        "dev": "node scripts/dev.mjs",
+        "build": "node scripts/build.mjs",
+        "export": "node scripts/build.mjs",
+        "test": "node --test"
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "devDependencies": {
+        "html-minifier-terser": "7.2.0"
+    }
 }
