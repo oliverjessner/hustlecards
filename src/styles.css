@@ -126,6 +126,14 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold-light); ou
 .card-front-rule { display: block; height: 1px; width: 28px; background: #ad945a; margin-top: 24px; }
 .card-front-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #b6a57e; font-size: 7px; letter-spacing: .21em; }
 .card-front-symbol { color: #d2ba87; font-size: 18px; }
+/* Optional portrait layer. Normal cards keep their existing front unchanged. */
+.card-portrait { position: absolute; inset: 0; z-index: 0; display: block; overflow: hidden; border-radius: inherit; background: radial-gradient(ellipse at 50% 15%, #62523940, transparent 62%), linear-gradient(145deg, #292820, #121511); pointer-events: none; }
+.card-portrait-image { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 25%; opacity: 0; }
+.card-portrait.is-loaded .card-portrait-image { opacity: 1; }
+.card-portrait::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #08090b55, #08090b99 30%, #08090be8 72%, #08090bf5), linear-gradient(90deg, #08090b66, transparent 75%); }
+.card-front.has-portrait > :not(.card-portrait) { position: relative; z-index: 2; }
+.card-front.has-portrait::before { z-index: 3; }
+.card-front.has-portrait::after { z-index: 1; }
 .card-slot.is-chosen { transform: translate3d(-50%, -50%, 50px) rotate(0deg) scale(var(--reveal-scale)); z-index: 5; }
 .card-slot.is-chosen .card-float { animation: none; }
 .card-slot.is-chosen .card-button { transform: none; }
@@ -360,8 +368,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold-light); ou
   .collection-nav { left: max(60px, env(safe-area-inset-left)); }
 }
 @media (max-width: 600px) {
-  .collection-nav { top: max(57px, calc(env(safe-area-inset-top) + 45px)); left: max(22px, env(safe-area-inset-left)); }
+  .collection-nav { top: max(16px, calc(env(safe-area-inset-top) + 4px)); left: max(22px, env(safe-area-inset-left)); }
   .collection-link { min-height: 32px; font-size: 8px; gap: 10px; }
+  .draw-availability { top: max(16px, calc(env(safe-area-inset-top) + 4px)); min-height: 32px; }
   .collection-shell { width: calc(100% - 40px); padding-top: max(17px, env(safe-area-inset-top)); }
   .collection-header { padding-bottom: 13px; gap: 14px; }
   .collection-wordmark { font-size: 6px; letter-spacing: .2em; }
@@ -385,6 +394,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold-light); ou
   .collection-detail { padding-top: 20px; }
   .collection-detail-card { width: min(300px, calc(100vw - 68px)); }
   .collection-detail-card .card-front::before { inset: 10px; border-radius: 7px; }
+}
+@media (max-width: 350px) {
+  .collection-nav { left: max(16px, env(safe-area-inset-left)); }
 }
 @media (max-height: 540px) and (min-width: 601px) {
   .collection-nav { top: max(6px, env(safe-area-inset-top)); left: max(24px, env(safe-area-inset-left)); }

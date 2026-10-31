@@ -1,6 +1,6 @@
 # HUSTLE CARDS
 
-Eine bildschirmfüllende Card-Draw-Experience mit 50 englischen Motivationskarten, einem räumlichen Kartenfächer und einer animierten 3D-Enthüllung. Dunkle Oberflächen, eigens gestaltete SVG-Ornamente und Champagner-Akzente funktionieren vollständig ohne externe Schriften, Bilder, APIs oder Laufzeit-Abhängigkeiten.
+Eine bildschirmfüllende Card-Draw-Experience mit 50 englischen Motivationskarten, einem räumlichen Kartenfächer und einer animierten 3D-Enthüllung. Die aktuellen Standardkarten nutzen dunkle Oberflächen, eigens gestaltete SVG-Ornamente und Champagner-Akzente ohne externe Schriften, Bilder, APIs oder Laufzeit-Abhängigkeiten. Die Asset-Architektur ist für spätere Legendary-Porträts vorbereitet; Legendary-Karten und Porträtfotos sind noch nicht enthalten.
 
 ## Entwicklungsstart
 
@@ -29,13 +29,47 @@ npm run build
 npm run export
 ```
 
-Beide Befehle erstellen dieselbe eigenständige, minifizierte Datei: `dist/index.html`. Der Build integriert HTML, CSS, JavaScript, Kartendaten und SVG-Grafiken direkt in diese Datei. `html-minifier-terser` verkleinert HTML sowie eingebettetes CSS und JavaScript; schließende Script-/Style-Sequenzen bleiben geschützt. Der Export wird vor und nach der Minifizierung validiert. `dist/` wird vor dem Schreiben bereinigt und enthält anschließend ausschließlich `index.html`. Die Quelldateien bleiben lesbar erhalten. Bei einem Fehler endet der Build mit Exit-Code 1.
+Beide Befehle erstellen dieselbe minifizierte Distribution im Ordner `dist/`. HTML, CSS, JavaScript einschließlich des Porträt-Helfers, Kartendaten und die bisherigen SVG-Ornamente bleiben vollständig in `dist/index.html` gebündelt. Vorhandene WebP-Porträts kopiert der Build unverändert aus `src/assets/legendary/` nach `dist/assets/legendary/`; sie werden niemals als Base64, Data-URL oder Inline-Bild eingebettet. `html-minifier-terser` verkleinert HTML sowie eingebettetes CSS und JavaScript; schließende Script-/Style-Sequenzen bleiben geschützt. Der Export und die freigegebenen Bilddateien werden validiert. Anschließend wird `dist/` von alten Dateien bereinigt und neu geschrieben. Die Quelldateien bleiben lesbar erhalten. Bei einem Fehler endet der Build mit Exit-Code 1.
+
+**Sobald Porträts enthalten sind, ist der gesamte Ordner `dist/` die Distribution, nicht allein `index.html`.** Beim Kopieren oder Hochladen muss `assets/legendary/` neben der HTML-Datei erhalten bleiben. Ohne Porträts besteht der aktuelle Export weiterhin nur aus `index.html`. Es gibt keine separaten CSS- oder JavaScript-Dateien im Build.
 
 Der Export lässt sich direkt im Browser öffnen oder auf jedem statischen HTTP-Server bereitstellen. Zum lokalen Prüfen des fertigen Exports:
 
 ```sh
 npm run dev -- --dist
 ```
+
+## Vorbereitete Porträt-Assets
+
+Spätere, rechtmäßig nutzbare Porträts gehören als bereits optimierte WebP-Dateien in diesen Pfad:
+
+```text
+src/assets/legendary/example-v1.webp
+                ↓ npm run build
+dist/assets/legendary/example-v1.webp
+```
+
+Erlaubt sind flache Dateinamen mit Kleinbuchstaben, Ziffern, Bindestrichen oder Unterstrichen und der Endung `.webp`, beginnend mit einem Buchstaben oder einer Ziffer. Unterordner, symbolische Links und andere Dateitypen werden nicht exportiert. Die leere `.gitkeep` hält nur den Quellordner im Repository und wird nicht ausgeliefert. Keine Fotos herunterladen oder Assets ohne geklärte Nutzungsrechte hinzufügen.
+
+Eine künftige Kartendefinition kann folgende optionale Metadaten verwenden; dies aktiviert derzeit keine Legendary-Karte:
+
+```js
+portrait: {
+  src: './assets/legendary/example-v1.webp',
+  width: 600,
+  height: 900
+}
+```
+
+Der relative Pfad wird vom Dokument aus aufgelöst. Dadurch funktioniert dieselbe Distribution beispielsweise unter `/hustlecards/` oder `/experiments/hustlecards/`, ohne einen Root-Pfad oder eine Hostadresse fest einzubauen. Ein führendes `/`, externe URLs, Data-URLs, Query-Parameter und Pfadwechsel mit `..` werden vom Helfer nicht akzeptiert.
+
+`src/portraits.js` stellt den wiederverwendbaren Helfer `window.HustlePortraits.create(portrait, { loading: 'lazy' })` und die Pfadprüfung `isPortraitPath(src)` bereit. `create` liefert ein dekoratives Porträt-Element mit dunklem Fallback; ohne zulässigen Bildpfad entsteht keine Bildanfrage. Die `img`-Elemente verwenden feste intrinsische Abmessungen, standardmäßig 600 × 900 Pixel, `decoding="async"`, `object-fit: cover` und dunkle Verlaufsüberlagerungen. In Karten ist das Bild standardmäßig dekorativ und hat einen leeren Alternativtext: Identität und Zitat müssen über den zugänglichen Karteninhalt vermittelt werden. Für eigenständige, inhaltliche Bilder unterstützt der Helfer `{ decorative: false }` mit einem beschreibenden `portrait.alt`. Ein fehlendes oder fehlgeschlagenes Bild lässt die Karte mit dunklem Hintergrund lesbar; es gibt keine automatischen Wiederholungsanfragen. Ein fehlgeschlagener Pfad wird in derselben Sitzung bis zum Neuladen nicht erneut angefordert.
+
+Die vorbereiteten Renderpfade laden Porträts einer enthüllten Karte und der geöffneten Detailansicht mit `loading="eager"`. Die sichtbare Sammlung erzeugt nur für bereits entdeckte Karten Bilder mit `loading="lazy"`; verdeckte Karten und die noch geschlossene Sammlung erzeugen keine Porträtanfragen. Die nativen Browserregeln bestimmen bei Lazy Loading den Abstand zum sichtbaren Bereich. Aktuell besitzen alle 50 Standardkarten keine Porträt-Metadaten und verursachen daher keine Bildanfragen.
+
+Für mobile Bandbreite Porträts vor dem Hinzufügen zuschneiden, ungefähr auf 600 × 900 Pixel begrenzen und als WebP komprimieren; etwa 100 KiB pro Datei ist ein sinnvolles Ziel, keine Build-Grenze. Es gibt keine Vorabdownloads des gesamten Bildbestands, keine Cache-Busting-Parameter und keine Laufzeitbibliothek für Bilder.
+
+Porträts nutzen den normalen HTTP-Cache des Browsers. Der Entwicklungsserver liefert sie als `image/webp` mit `Cache-Control: public, max-age=3600`, ETag und Last-Modified sowie `304 Not Modified` bei gültigen bedingten Anfragen. HTML, CSS und JavaScript bleiben für die Entwicklung mit `no-store` versehen. Beim statischen Hosting MIME-Typ und Cache-Control entsprechend konfigurieren; die tatsächliche Cache-Dauer legt der Host fest. Wird ein Porträt ersetzt, einen neuen Dateinamen wie `example-v2.webp` verwenden und die Metadaten anpassen. Es gibt keinen Service Worker und keine Garantie, dass ein zuvor geladenes Bild im Browser-Cache verbleibt.
 
 ## Karten und Bedienung
 
@@ -59,7 +93,7 @@ Die App verwendet weiterhin ausschließlich den localStorage-Schlüssel `hustle-
 
 Ist localStorage blockiert oder nicht beschreibbar, arbeitet die App für die aktuelle Sitzung mit einem Speicherzustand im Arbeitsspeicher weiter und zeigt einen dezenten Hinweis. Die Wartezeit gilt dann nur in der aktuellen Sitzung. Ziehungen und Wartezeit können nach dem Schließen oder Neuladen verloren gehen.
 
-Die exportierte HTML-Datei braucht nach dem Laden keine Netzwerkverbindung. Beim direkten Öffnen über `file://` hängt die Verfügbarkeit und Zuordnung von localStorage vom Browser ab. Ein Umbenennen oder Verschieben der Datei kann einen anderen Speicherbereich ergeben. Für zuverlässige Persistenz ist ein stabiler HTTP-Origin der Referenzbetrieb: Protokoll, Hostname und Port müssen gleich bleiben. `localhost`, `127.0.0.1` und verschiedene Ports haben getrennte Speicherbereiche.
+Die in `index.html` gebündelte Oberfläche und die aktuellen Standardkarten brauchen nach dem Laden keine Netzwerkverbindung. Spätere Porträts werden separat bei Bedarf angefordert; offline erscheinen nur lokal verfügbare oder noch im Browser-Cache vorhandene Dateien. Für andere Bilder bleibt der dunkle Fallback sichtbar, ohne Ziehungen, Sammlung oder Wartezeit zu verändern. Beim direkten Öffnen über `file://` hängt die Verfügbarkeit und Zuordnung von localStorage vom Browser ab; normale HTTP-Caching-Regeln gelten dort nicht. Ein Umbenennen oder Verschieben der Datei kann einen anderen Speicherbereich ergeben. Für zuverlässige Persistenz ist ein stabiler HTTP-Origin der Referenzbetrieb: Protokoll, Hostname und Port müssen gleich bleiben. `localhost`, `127.0.0.1` und verschiedene Ports haben getrennte Speicherbereiche.
 
 ## Projektstruktur
 
@@ -68,14 +102,18 @@ src/
   index.html
   styles.css
   app.js
+  portraits.js
+  assets/legendary/  # optionale WebP-Quellen; aktuell leer
 scripts/
   build.mjs
   dev.mjs
 tests/
   build.test.mjs
   cooldown.test.mjs
+  dev.test.mjs
 dist/
   index.html
+  assets/legendary/  # nur wenn Porträtdateien enthalten sind
 package.json
 README.md
 ```
@@ -88,4 +126,4 @@ Der Entwicklungsserver verwendet ausschließlich Node.js-Bordmittel. Für den Bu
 npm test
 ```
 
-Der integrierte Node.js-Testlauf prüft den Single-File-Build in isolierten temporären Verzeichnissen: Minifizierung mit Erhalt bedeutungsvoller Leerzeichen und JavaScript-Werte, Inline-Inhalte, sichere Script-/Style-Endtags, Bereinigung alter Exportdateien und die Ablehnung separater Ressourcen oder Laufzeit-Netzwerkzugriffe. Weitere Tests führen den unveränderten App-Code mit einem kleinen DOM-Adapter und kontrollierter Uhr aus: Speicherung vor dem Reveal, Schutz vor Mehrfachauswahl, die exakte 24-Stunden-Grenze, Neuladen, Migration älterer Speicherstände, Änderungen aus anderen Tabs und Betrieb ohne localStorage. Sie prüfen außerdem Maus- und Sensor-Tilt, Kalibrierung, Bildschirmachsen, ungültige Messwerte, den Verzicht auf Berechtigungsanfragen sowie das Zurücksetzen bei Zeiger-, Fenster- und Medieneinstellungsänderungen. Die Sammlungstests prüfen alle 50 Karten und verdeckte Inhalte, Migration und lebenslange Entdeckungen, Neustarts, unabhängige Wartezeiten, Detailnavigation mit Scroll- und Fokuswiederherstellung sowie die Zusammenführung verschiedener Tabs und beschädigter Speicherstände. Diese Tests ersetzen keine visuelle Prüfung im Browser oder auf einem echten Mobilgerät.
+Der integrierte Node.js-Testlauf prüft den gebündelten Build und separate freigegebene Porträt-Assets in isolierten temporären Verzeichnissen: Minifizierung mit Erhalt bedeutungsvoller Leerzeichen und JavaScript-Werte, Inline-Inhalte, sichere Script-/Style-Endtags, Bereinigung alter Exportdateien, unverändertes Kopieren zugelassener WebP-Dateien, relative Bildpfade und die Ablehnung zusätzlicher Code-Ressourcen oder beliebiger Laufzeit-Netzwerkzugriffe. Weitere Tests führen den unveränderten App-Code mit einem kleinen DOM-Adapter und kontrollierter Uhr aus: Speicherung vor dem Reveal, Schutz vor Mehrfachauswahl, die exakte 24-Stunden-Grenze, Neuladen, Migration älterer Speicherstände, Änderungen aus anderen Tabs und Betrieb ohne localStorage. Sie prüfen außerdem Maus- und Sensor-Tilt, Kalibrierung, Bildschirmachsen, ungültige Messwerte, den Verzicht auf Berechtigungsanfragen sowie das Zurücksetzen bei Zeiger-, Fenster- und Medieneinstellungsänderungen. Die Sammlungstests prüfen alle 50 Karten und verdeckte Inhalte, Migration und lebenslange Entdeckungen, Neustarts, unabhängige Wartezeiten, Detailnavigation mit Scroll- und Fokuswiederherstellung sowie die Zusammenführung verschiedener Tabs und beschädigter Speicherstände. Porträttests prüfen bedarfsgesteuertes Laden, die gesperrten Renderpfade, feste Abmessungen, Fehler-Fallbacks und unveränderte Spielzustände. HTTP-Tests starten ausschließlich kurzlebige Testserver auf freien lokalen Ports und prüfen WebP-MIME-Typ, Cache-Header, bedingte Anfragen und Inhaltsänderungen. Diese Tests ersetzen keine visuelle Prüfung im Browser oder auf einem echten Mobilgerät.

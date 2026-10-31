@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const script = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+const portraitScript = await readFile(new URL('../src/portraits.js', import.meta.url), 'utf8');
 const markup = await readFile(new URL('../src/index.html', import.meta.url), 'utf8');
 const KEY = 'hustle-cards:v1';
 const DAY = 86_400_000;
@@ -48,6 +49,7 @@ class Element {
   set innerHTML(value) { this._text = ''; this.replaceChildren(); parse(value, this); }
   setAttribute(name, value) {
     this.attributes[name] = String(value);
+    if (this.tagName === 'IMG' && name === 'src') this.ownerDocument.imageSources.push(String(value));
     if (name === 'id') this.id = String(value);
     if (name === 'class') this.className = String(value);
     if (name === 'hidden') this.hidden = true;
@@ -67,10 +69,17 @@ class Element {
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
   closest(selector) { return this.matches(selector) ? this : this.parentElement?.closest(selector) ?? null; }
   append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } }
+  prepend(...children) { for (const child of children) child.parentElement = this; this.children.unshift(...children); }
   replaceChildren(...children) { this.children.forEach(child => { child.parentElement = null; }); this.children = []; this.append(...children); }
   remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this); this.parentElement = null; }
-  addEventListener(type, callback) { if (!this.listeners.has(type)) this.listeners.set(type, []); this.listeners.get(type).push(callback); }
-  async dispatch(type, extra = {}) { await Promise.all((this.listeners.get(type) ?? []).map(callback => callback({ target: this, preventDefault() {}, ...extra }))); }
+  addEventListener(type, callback, options = {}) { if (!this.listeners.has(type)) this.listeners.set(type, []); this.listeners.get(type).push({ callback, once: options.once }); }
+  removeEventListener(type, callback) { this.listeners.set(type, (this.listeners.get(type) ?? []).filter(listener => listener.callback !== callback)); }
+  async dispatch(type, extra = {}) {
+    await Promise.all([...(this.listeners.get(type) ?? [])].map(({ callback, once }) => {
+      if (once) this.removeEventListener(type, callback);
+      return callback({ target: this, preventDefault() {}, ...extra });
+    }));
+  }
   async click() { if (!this.disabled) await this.dispatch('click'); }
   focus(options) { this.focusOptions = options; this.ownerDocument.activeElement = this; }
   showModal() { this.open = true; }
@@ -81,7 +90,7 @@ class Element {
 
 function parse(html, root) {
   const stack = [root];
-  const voidTags = new Set(['meta', 'link', 'br', 'hr', 'input', 'path']);
+  const voidTags = new Set(['meta', 'link', 'br', 'hr', 'input', 'path', 'img']);
   for (const part of html.matchAll(/<([^>]+)>|([^<]+)/g)) {
     if (part[2]) { stack.at(-1)._text += part[2]; continue; }
     const token = part[1];
@@ -102,10 +111,12 @@ function loadApp({
   saved = null, now = NOW, storageBlocked = false, locks = true,
   reducedMotion = true, mouseHover = true, coarsePointer = false, maxTouchPoints = 0,
   secureContext = true, orientationAvailable = true, permissionRequired = false,
-  screenAngle = 0, legacyOrientation = 0, sensorPermissions = null, permissionQuery = null
+  screenAngle = 0, legacyOrientation = 0, sensorPermissions = null, permissionQuery = null,
+  portraits = {}
 } = {}) {
   const document = new Element('#document');
   document.ownerDocument = document;
+  document.imageSources = [];
   document.getElementById = id => document.querySelector(`#${id}`);
   document.createElement = tag => new Element(tag, document);
   document.visibilityState = 'visible';
@@ -192,11 +203,22 @@ function loadApp({
     getComputedStyle: () => ({ transform: 'none', getPropertyValue: () => '' }),
     setInterval: window.setInterval, clearInterval: window.clearInterval,
     setTimeout: window.setTimeout, clearTimeout: window.clearTimeout,
-    console
+    console,
+    __testPortraits: portraits
   };
-  vm.runInNewContext(script, context, { filename: 'src/app.js' });
+  // Only synthetic fixtures opt in to portrait metadata. The shipped 50 cards
+  // remain unchanged, and the complete renderer and storage logic still run.
+  const appScript = Object.keys(portraits).length === 0 ? script : script.replace(
+    "quote, rarity: 'standard'",
+    "quote, rarity: __testPortraits[index + 1] ? 'legendary' : 'standard', portrait: __testPortraits[index + 1]"
+  );
+  if (Object.keys(portraits).length > 0) assert.notEqual(appScript, script, 'Synthetic portrait fixture must reach the card model');
+  vm.runInNewContext(portraitScript, context, { filename: 'src/portraits.js' });
+  vm.runInNewContext(appScript, context, { filename: 'src/app.js' });
   return {
     document, storage, store, writes, media,
+    portraitsApi: window.HustlePortraits,
+    imageSources: document.imageSources,
     permissionQueries,
     get permissionRequests() { return permissionRequests; },
     permissionListenerCount(name) { return permissionStatuses.get(name)?.listenerCount('change') ?? 0; },
@@ -1041,4 +1063,187 @@ test('temporary storage still keeps discovered cards and collection details usab
   await app.get('collection-close').click();
   assert.equal(app.get('reveal-actions').hidden, true);
   assert.equal(app.writes.length, 0);
+});
+
+const TEST_PORTRAIT = Object.freeze({
+  src: './assets/legendary/test-portrait-v1.webp',
+  alt: 'A licensed test portrait',
+  width: 600,
+  height: 900
+});
+
+test('the existing 50 standard cards never create portrait image requests', async () => {
+  const app = loadApp();
+  assert.equal(app.document.querySelectorAll('img').length, 0);
+  await app.buttons()[0].click();
+  await flush();
+  await app.get('open-collection').click();
+  await collectionCards(app).find(card => card.classList.contains('is-discovered')).click();
+  assert.equal(app.document.querySelectorAll('img').length, 0);
+  assert.deepEqual(app.imageSources, []);
+});
+
+test('the reusable portrait helper uses relative WebP images with intrinsic dimensions and native decoding', async () => {
+  const app = loadApp();
+  assert.equal(Object.isFrozen(app.portraitsApi), true);
+  const portrait = app.portraitsApi.create({ ...TEST_PORTRAIT, src: 'assets/legendary/test-portrait-v1.webp', width: 480, height: 720 });
+  const image = portrait.querySelector('img');
+  assert.equal(portrait.classList.contains('card-portrait'), true);
+  assert.equal(portrait.getAttribute('aria-hidden'), 'true');
+  assert.equal(image.getAttribute('src'), TEST_PORTRAIT.src);
+  assert.equal(image.getAttribute('width'), '480');
+  assert.equal(image.getAttribute('height'), '720');
+  assert.equal(image.getAttribute('loading'), 'lazy');
+  assert.equal(image.getAttribute('decoding'), 'async');
+  assert.equal(image.getAttribute('alt'), '');
+  assert.equal(image.getAttribute('srcset'), null);
+  assert.equal(image.getAttribute('crossorigin'), null);
+  assert.deepEqual(app.imageSources, [TEST_PORTRAIT.src]);
+  await image.dispatch('load');
+  assert.equal(portrait.classList.contains('is-loaded'), true);
+  assert.equal(image.hidden, false);
+
+  const explicit = app.portraitsApi.create(TEST_PORTRAIT, { loading: 'eager', decorative: false });
+  assert.equal(explicit.querySelector('img').getAttribute('alt'), TEST_PORTRAIT.alt);
+  assert.equal(explicit.querySelector('img').getAttribute('loading'), 'eager');
+  const repaired = app.portraitsApi.create({ ...TEST_PORTRAIT, width: -1, height: '900' }, { loading: 'invalid' }).querySelector('img');
+  assert.equal(repaired.getAttribute('width'), '600');
+  assert.equal(repaired.getAttribute('height'), '900');
+  assert.equal(repaired.getAttribute('loading'), 'lazy');
+});
+
+test('the portrait helper rejects embedded, remote, escaping and non-WebP image paths without requests', () => {
+  const app = loadApp();
+  const invalid = [
+    undefined, null, '', 42, 'data:image/webp;base64,UklGRg==', 'blob:portrait',
+    'https://example.com/portrait.webp', '//example.com/portrait.webp', '/assets/legendary/a.webp',
+    '../assets/legendary/a.webp', './assets/legendary/../a.webp', './assets/legendary/sub/a.webp',
+    './assets/legendary/%2e%2e/a.webp', './assets/legendary/a.webp?version=1',
+    './assets/legendary/a.webp#portrait', './assets/legendary/a.png', './assets/legendary/A.webp',
+    './assets/legendary/a.WEBP', './assets/legendary/a b.webp', './assets/legendary/.hidden.webp'
+  ];
+  for (const src of invalid) {
+    assert.equal(app.portraitsApi.isPortraitPath(src), false, String(src));
+    const portrait = app.portraitsApi.create({ ...TEST_PORTRAIT, src });
+    assert.equal(portrait.classList.contains('card-portrait'), true);
+    assert.equal(portrait.querySelector('img'), null, String(src));
+  }
+  for (const src of ['./assets/legendary/a.webp', 'assets/legendary/portrait-2_v1.webp']) {
+    assert.equal(app.portraitsApi.isPortraitPath(src), true, src);
+  }
+  for (const metadata of [undefined, null, {}]) assert.equal(app.portraitsApi.create(metadata).querySelector('img'), null);
+  assert.deepEqual(app.imageSources, []);
+});
+
+test('portrait failures keep the fallback visible and suppress repeated failed requests for the session', async () => {
+  const app = loadApp();
+  const before = app.state;
+  const portrait = app.portraitsApi.create({ src: TEST_PORTRAIT.src }, { loading: 'eager' });
+  const image = portrait.querySelector('img');
+  assert.equal(image.getAttribute('width'), '600');
+  assert.equal(image.getAttribute('height'), '900');
+  await image.dispatch('error');
+  assert.equal(portrait.classList.contains('is-failed'), true);
+  assert.equal(portrait.classList.contains('is-loaded'), false);
+  assert.equal(image.hidden, true);
+  const repeated = app.portraitsApi.create(TEST_PORTRAIT);
+  assert.equal(repeated.classList.contains('is-failed'), true);
+  assert.equal(repeated.querySelector('img'), null);
+  assert.deepEqual(app.imageSources, [TEST_PORTRAIT.src]);
+  assert.deepEqual(app.state, before);
+});
+
+test('face-down and undiscovered cards never attach portraits; only the selected reveal loads eagerly', async () => {
+  const portraits = Object.fromEntries(Array.from({ length: 50 }, (_, index) => [index + 1, { ...TEST_PORTRAIT, src: `./assets/legendary/test-${index + 1}.webp` }]));
+  const app = loadApp({ portraits });
+  assert.equal(app.document.querySelectorAll('img').length, 0);
+  await app.get('open-collection').click();
+  assert.equal(collectionCards(app).filter(card => card.classList.contains('is-locked')).length, 50);
+  assert.equal(app.get('collection-grid').querySelectorAll('img').length, 0);
+  assert.deepEqual(app.imageSources, []);
+  await app.get('collection-close').click();
+  const selectedId = Number(app.slots()[0].dataset.cardId);
+  const drawing = app.buttons()[0].click();
+  assert.deepEqual(app.state.discoveredIds, [selectedId]);
+  const image = app.slots()[0].querySelector('img');
+  assert.equal(image.getAttribute('loading'), 'eager');
+  assert.equal(image.getAttribute('src'), portraits[selectedId].src);
+  assert.equal(app.get('collection-grid').querySelectorAll('img').length, 0);
+  assert.deepEqual(app.imageSources, [portraits[selectedId].src]);
+  await drawing;
+  await flush();
+  assert.equal(app.mode, 'REVEALED');
+  assert.equal(app.get('reveal-actions').hidden, true);
+});
+
+test('a restored revealed portrait loads eagerly while the hidden collection stays request-free', () => {
+  const app = loadApp({ saved: collectionState({ drawnIds: [1], discoveredIds: [1, 2] }), portraits: { 1: TEST_PORTRAIT, 2: { ...TEST_PORTRAIT, src: './assets/legendary/second.webp' } } });
+  assert.equal(app.mode, 'REVEALED');
+  assert.equal(app.slots()[0].querySelector('img').getAttribute('loading'), 'eager');
+  assert.equal(app.get('collection-grid').querySelectorAll('img').length, 0);
+  assert.deepEqual(app.imageSources, [TEST_PORTRAIT.src]);
+});
+
+test('only visible unlocked collection cards receive lazy portraits and reopening reuses the same image', async () => {
+  const app = loadApp({ saved: collectionState({ drawnIds: [50], discoveredIds: [1, 50] }), portraits: { 1: TEST_PORTRAIT, 2: { ...TEST_PORTRAIT, src: './assets/legendary/second.webp' } } });
+  assert.deepEqual(app.imageSources, []);
+  assert.equal(app.get('collection-grid').querySelectorAll('img').length, 0);
+  const before = app.state;
+  await app.get('open-collection').click();
+  const image = collectionCard(app, 1).querySelector('img');
+  assert.equal(image.getAttribute('loading'), 'lazy');
+  assert.equal(image.getAttribute('src'), TEST_PORTRAIT.src);
+  assert.equal(collectionCard(app, 2).querySelector('img'), null);
+  assert.equal(collectionCard(app, 2).getAttribute('aria-label'), 'Card 2 of 50. Locked.');
+  await app.get('collection-close').click();
+  await app.get('open-collection').click();
+  assert.equal(collectionCard(app, 1).querySelector('img'), image);
+  assert.deepEqual(app.imageSources, [TEST_PORTRAIT.src]);
+  assert.deepEqual(app.state, before);
+});
+
+test('portrait detail loading is eager and preserves cooldown, gallery scroll and existing lazy image', async () => {
+  const app = loadApp({ saved: collectionState({ drawnIds: [50], discoveredIds: [1, 50] }), portraits: { 1: TEST_PORTRAIT } });
+  await app.get('open-collection').click();
+  const galleryImage = collectionCard(app, 1).querySelector('img');
+  const before = app.state;
+  const writes = app.writes.length;
+  app.get('collection-view').scrollTop = 1700;
+  await collectionCard(app, 1).click();
+  const detailImage = app.get('detail-card').querySelector('img');
+  assert.equal(detailImage.getAttribute('loading'), 'eager');
+  assert.equal(detailImage.getAttribute('src'), TEST_PORTRAIT.src);
+  await detailImage.dispatch('error');
+  assert.equal(detailImage.hidden, true);
+  assert.equal(app.get('detail-card').querySelector('.card-quote').textContent, 'Work in silence. Let success make the noise.');
+  await app.get('detail-back').click();
+  assert.equal(app.get('collection-view').scrollTop, 1700);
+  assert.equal(app.document.activeElement, collectionCard(app, 1));
+  assert.equal(collectionCard(app, 1).querySelector('img'), galleryImage);
+  assert.deepEqual(app.state, before);
+  assert.equal(app.writes.length, writes);
+  assert.equal(app.get('reveal-actions').hidden, true);
+});
+
+test('cross-tab discovery mounts only the visible lazy portrait and preserves previously loaded gallery images', async () => {
+  const second = { ...TEST_PORTRAIT, src: './assets/legendary/second.webp' };
+  const app = loadApp({ saved: collectionState({ drawnIds: [50], discoveredIds: [1, 50] }), portraits: { 1: TEST_PORTRAIT, 2: second } });
+  await app.get('open-collection').click();
+  const firstImage = collectionCard(app, 1).querySelector('img');
+  collectionCard(app, 1).focus();
+  app.get('collection-view').scrollTop = 1200;
+  app.storage.setItem(KEY, JSON.stringify(collectionState({ drawnIds: [2, 50], discoveredIds: [1, 2, 50], lastDrawnId: 2, lastDrawnAt: NOW + 1000 })));
+  app.emit('storage', { key: KEY, storageArea: app.storage });
+  assert.equal(app.get('app').dataset.view, 'collection');
+  assert.equal(app.get('collection-view').scrollTop, 1200);
+  assert.equal(app.document.activeElement, collectionCard(app, 1));
+  assert.equal(collectionCard(app, 1).querySelector('img'), firstImage);
+  assert.equal(collectionCard(app, 2).querySelector('img').getAttribute('loading'), 'lazy');
+  assert.equal(app.slots()[0].querySelector('img'), null, 'The hidden restored deck must not request an eager portrait');
+  assert.deepEqual(app.imageSources, [TEST_PORTRAIT.src, second.src]);
+  await app.get('collection-close').click();
+  assert.equal(app.slots()[0].querySelector('img').getAttribute('loading'), 'eager');
+  assert.equal(app.slots()[0].querySelector('img').getAttribute('src'), second.src);
+  assert.deepEqual(app.state.discoveredIds, [1, 2, 50]);
+  assert.equal(app.state.lastDrawnAt, NOW + 1000);
 });

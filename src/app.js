@@ -291,7 +291,7 @@
       face.setAttribute('type', 'button');
       face.setAttribute('aria-label', `View card ${card.id} of ${CARDS.length}. ${card.quote}`);
       face.innerHTML = frontMarkup();
-      fillQuote(face, card);
+      fillQuote(face, card, { loading: 'lazy', portrait: view === 'collection' });
       face.addEventListener('click', () => openDetail(card.id));
     } else {
       face.setAttribute('role', 'img');
@@ -311,6 +311,13 @@
     return [...ui.grid.querySelectorAll('.is-discovered')].find((button) => button.dataset.cardId === String(id));
   }
 
+  function mountCollectionPortraits() {
+    for (const button of ui.grid.querySelectorAll('.is-discovered')) {
+      const card = CARDS.find((entry) => entry.id === Number(button.dataset.cardId));
+      if (card) mountPortrait(button, card, 'lazy');
+    }
+  }
+
   let renderedDiscoveries = null;
   function renderCollection() {
     const count = state.discoveredIds.length;
@@ -321,7 +328,16 @@
     if (signature === renderedDiscoveries) return;
     const focusedId = document.activeElement?.closest('.is-discovered')?.dataset.cardId;
     const scroll = ui.collection.scrollTop;
-    ui.grid.replaceChildren(...CARDS.map(collectionCard));
+    // Keep existing unlocked faces and their images mounted. Another tab unlocking
+    // a card must not replace loaded portraits or disturb the reader's focus.
+    const existing = new Map([...ui.grid.querySelectorAll('.collection-card')].map((face) => [Number(face.dataset.cardId), face]));
+    for (const card of CARDS) {
+      const face = existing.get(card.id);
+      if (!face) ui.grid.append(collectionCard(card));
+      else if (face.classList.contains('is-locked') && state.discoveredIds.includes(card.id)) {
+        face.parentElement.replaceChildren(...collectionCard(card).children);
+      }
+    }
     renderedDiscoveries = signature;
     if (view === 'collection' && focusedId) galleryButton(focusedId)?.focus({ preventScroll: true });
     ui.collection.scrollTop = scroll;
@@ -334,6 +350,12 @@
     ui.collection.hidden = view === 'deck';
     ui.gallery.hidden = view === 'detail';
     ui.detail.hidden = view !== 'detail';
+    if (view === 'collection') mountCollectionPortraits();
+    if (view === 'deck' && mode === MODES.REVEALED) {
+      const card = CARDS.find((entry) => entry.id === state.lastDrawnId);
+      const slot = ui.deck.querySelector('.card-slot');
+      if (card && slot) mountPortrait(slot, card, 'eager');
+    }
     resetCardTilts();
     syncOrientationTilt();
   }
@@ -538,17 +560,26 @@
     slot.addEventListener('pointerleave', leavePointer);
     slot.addEventListener('pointercancel', leavePointer);
     if (revealed) {
-      fillQuote(slot, card);
+      fillQuote(slot, card, { portrait: view === 'deck' });
       finishCard(slot, card);
     }
     return slot;
   }
 
-  function fillQuote(slot, card) {
+  function mountPortrait(slot, card, loading) {
+    if (!card.portrait || !state.discoveredIds.includes(card.id)) return;
+    const front = slot.querySelector('.card-front');
+    if (!front || front.querySelector('.card-portrait')) return;
+    front.classList.add('has-portrait');
+    front.prepend(window.HustlePortraits.create(card.portrait, { loading }));
+  }
+
+  function fillQuote(slot, card, { loading = 'eager', portrait = true } = {}) {
     const quote = slot.querySelector('.card-quote');
     quote.textContent = card.quote;
     quote.classList.toggle('quote-long', card.quote.length > 42);
     slot.querySelector('.card-number').textContent = `Nº ${String(card.id).padStart(2, '0')} / 50`;
+    if (portrait) mountPortrait(slot, card, loading);
   }
 
   function finishCard(slot, card) {
