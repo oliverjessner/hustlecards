@@ -6,6 +6,7 @@
   const VERSION = 2;
   const DAY_MS = 24 * 60 * 60 * 1000;
   const MAX_DRAW_TIMESTAMP = 8.64e15 - DAY_MS;
+  const LEGENDARY_PREVIEW_COUNT = 5;
   const MODES = Object.freeze({ IDLE: 'IDLE', ANIMATING: 'ANIMATING', REVEALED: 'REVEALED', COMPLETED: 'COMPLETED' });
   const CARDS = Object.freeze([
     'Work in silence. Let success make the noise.',
@@ -70,7 +71,7 @@
     drawView: $('draw-view'), collection: $('collection-view'), openCollection: $('open-collection'),
     closeCollection: $('collection-close'), collectionTitle: $('collection-title'),
     progress: $('collection-progress'), meter: $('collection-meter'),
-    gallery: $('collection-gallery'), grid: $('collection-grid'),
+    gallery: $('collection-gallery'), grid: $('collection-grid'), legendaryPreviews: $('legendary-preview-grid'),
     detail: $('collection-detail'), detailBack: $('detail-back'), detailCard: $('detail-card')
   };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -277,6 +278,29 @@
       <span class="card-front-rule"></span>
       <span class="card-front-bottom"><span>HUSTLE CARDS</span><span class="card-front-symbol" aria-hidden="true">✦</span></span>
     </span>`;
+  }
+
+  function renderLegendaryPreviews() {
+    // Teasers have no card IDs, quote data, portrait sources, or draw handlers.
+    // They are independent of the 50-card deck and its discovery progress.
+    ui.legendaryPreviews.replaceChildren(...Array.from({ length: LEGENDARY_PREVIEW_COUNT }, (_, index) => {
+      const number = String(index + 1).padStart(2, '0');
+      const item = document.createElement('li');
+      item.className = 'collection-item';
+      const face = document.createElement('div');
+      face.className = 'collection-card is-locked legendary-preview-card';
+      face.dataset.previewId = `legendary-${number}`;
+      face.dataset.rarity = 'legendary';
+      face.setAttribute('role', 'img');
+      face.setAttribute('aria-label', `Legendary preview ${index + 1} of ${LEGENDARY_PREVIEW_COUNT}. Locked. Coming soon.`);
+      face.innerHTML = `<span class="card-face card-back" aria-hidden="true"><span class="card-back-inner">
+        <span class="collection-lock-number">L · ${number}</span>
+        ${emblem}<span class="card-back-title">LEGENDARY</span><span class="card-back-subtitle">HUSTLE CARDS</span>
+        <span class="collection-lock-status">COMING SOON</span>
+      </span></span>`;
+      item.append(face);
+      return item;
+    }));
   }
 
   function collectionCard(card) {
@@ -860,6 +884,7 @@
   window.setInterval(updateAvailability, 1000);
 
   setView('deck');
+  renderLegendaryPreviews();
   renderCollection();
   if (state.lastDrawnId !== null) restoreLastCard();
   else renderRound();

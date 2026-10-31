@@ -1,6 +1,6 @@
 # HUSTLE CARDS
 
-Eine bildschirmfüllende Card-Draw-Experience mit 50 englischen Motivationskarten, einem räumlichen Kartenfächer und einer animierten 3D-Enthüllung. Die aktuellen Standardkarten nutzen dunkle Oberflächen, eigens gestaltete SVG-Ornamente und Champagner-Akzente ohne externe Schriften, Bilder, APIs oder Laufzeit-Abhängigkeiten. Die Asset-Architektur ist für spätere Legendary-Porträts vorbereitet; Legendary-Karten und Porträtfotos sind noch nicht enthalten.
+Eine bildschirmfüllende Card-Draw-Experience mit 50 englischen Motivationskarten, einem räumlichen Kartenfächer und einer animierten 3D-Enthüllung. Die aktuellen Standardkarten nutzen dunkle Oberflächen, eigens gestaltete SVG-Ornamente und Champagner-Akzente ohne externe Schriften, Bilder, APIs oder Laufzeit-Abhängigkeiten. Für spätere Legendary-Porträts liegen fünf separate WebP-Bilddateien bereit. Die Collection zeigt eine verdeckte Legendary-Vorschau; Legendary-Karten sind noch nicht ziehbar.
 
 ## Entwicklungsstart
 
@@ -31,7 +31,7 @@ npm run export
 
 Beide Befehle erstellen dieselbe minifizierte Distribution im Ordner `dist/`. HTML, CSS, JavaScript einschließlich des Porträt-Helfers, Kartendaten und die bisherigen SVG-Ornamente bleiben vollständig in `dist/index.html` gebündelt. Vorhandene WebP-Porträts kopiert der Build unverändert aus `src/assets/legendary/` nach `dist/assets/legendary/`; sie werden niemals als Base64, Data-URL oder Inline-Bild eingebettet. `html-minifier-terser` verkleinert HTML sowie eingebettetes CSS und JavaScript; schließende Script-/Style-Sequenzen bleiben geschützt. Der Export und die freigegebenen Bilddateien werden validiert. Anschließend wird `dist/` von alten Dateien bereinigt und neu geschrieben. Die Quelldateien bleiben lesbar erhalten. Bei einem Fehler endet der Build mit Exit-Code 1.
 
-**Sobald Porträts enthalten sind, ist der gesamte Ordner `dist/` die Distribution, nicht allein `index.html`.** Beim Kopieren oder Hochladen muss `assets/legendary/` neben der HTML-Datei erhalten bleiben. Ohne Porträts besteht der aktuelle Export weiterhin nur aus `index.html`. Es gibt keine separaten CSS- oder JavaScript-Dateien im Build.
+**Der gesamte Ordner `dist/` ist die Distribution, nicht allein `index.html`.** Beim Kopieren oder Hochladen muss `assets/legendary/` neben der HTML-Datei erhalten bleiben. Nur bei einem leeren Porträt-Quellordner besteht der Export allein aus `index.html`. Es gibt keine separaten CSS- oder JavaScript-Dateien im Build.
 
 Der Export lässt sich direkt im Browser öffnen oder auf jedem statischen HTTP-Server bereitstellen. Zum lokalen Prüfen des fertigen Exports:
 
@@ -41,23 +41,33 @@ npm run dev -- --dist
 
 ## Vorbereitete Porträt-Assets
 
-Spätere, rechtmäßig nutzbare Porträts gehören als bereits optimierte WebP-Dateien in diesen Pfad:
+Porträts gehören als bereits optimierte WebP-Dateien in diesen Pfad:
 
 ```text
-src/assets/legendary/example-v1.webp
+src/assets/legendary/alexhormozi.webp
                 ↓ npm run build
-dist/assets/legendary/example-v1.webp
+dist/assets/legendary/alexhormozi.webp
 ```
 
-Erlaubt sind flache Dateinamen mit Kleinbuchstaben, Ziffern, Bindestrichen oder Unterstrichen und der Endung `.webp`, beginnend mit einem Buchstaben oder einer Ziffer. Unterordner, symbolische Links und andere Dateitypen werden nicht exportiert. Die leere `.gitkeep` hält nur den Quellordner im Repository und wird nicht ausgeliefert. Keine Fotos herunterladen oder Assets ohne geklärte Nutzungsrechte hinzufügen.
+Erlaubt sind flache Dateinamen mit Kleinbuchstaben, Ziffern, Bindestrichen oder Unterstrichen und der Endung `.webp`, beginnend mit einem Buchstaben oder einer Ziffer. Unterordner, symbolische Links und andere Dateitypen werden nicht exportiert. Die leere `.gitkeep` und reguläre macOS-Dateien namens `.DS_Store` werden ignoriert und nicht ausgeliefert. Keine Fotos herunterladen oder Assets ohne geklärte Nutzungsrechte hinzufügen.
+
+Diese fünf Dateien liegen im Quellordner bereit und werden unverändert kopiert:
+
+| Datei | Abmessungen |
+| --- | --- |
+| `alexhormozi.webp` | 400 × 400 Pixel |
+| `davidgoggings.webp` | 400 × 502 Pixel |
+| `garyvee.webp` | 400 × 490 Pixel |
+| `images.webp` | 400 × 400 Pixel |
+| `saranblakely.webp` | 400 × 577 Pixel |
 
 Eine künftige Kartendefinition kann folgende optionale Metadaten verwenden; dies aktiviert derzeit keine Legendary-Karte:
 
 ```js
 portrait: {
-  src: './assets/legendary/example-v1.webp',
-  width: 600,
-  height: 900
+  src: './assets/legendary/alexhormozi.webp',
+  width: 400,
+  height: 400
 }
 ```
 
@@ -67,7 +77,7 @@ Der relative Pfad wird vom Dokument aus aufgelöst. Dadurch funktioniert dieselb
 
 Die vorbereiteten Renderpfade laden Porträts einer enthüllten Karte und der geöffneten Detailansicht mit `loading="eager"`. Die sichtbare Sammlung erzeugt nur für bereits entdeckte Karten Bilder mit `loading="lazy"`; verdeckte Karten und die noch geschlossene Sammlung erzeugen keine Porträtanfragen. Die nativen Browserregeln bestimmen bei Lazy Loading den Abstand zum sichtbaren Bereich. Aktuell besitzen alle 50 Standardkarten keine Porträt-Metadaten und verursachen daher keine Bildanfragen.
 
-Für mobile Bandbreite Porträts vor dem Hinzufügen zuschneiden, ungefähr auf 600 × 900 Pixel begrenzen und als WebP komprimieren; etwa 100 KiB pro Datei ist ein sinnvolles Ziel, keine Build-Grenze. Es gibt keine Vorabdownloads des gesamten Bildbestands, keine Cache-Busting-Parameter und keine Laufzeitbibliothek für Bilder.
+Für mobile Bandbreite Porträts vor dem Hinzufügen zuschneiden, auf höchstens etwa 600 × 900 Pixel begrenzen und als WebP komprimieren; kleinere Quellen nicht hochskalieren. Etwa 100 KiB pro Datei ist ein sinnvolles Ziel, keine Build-Grenze. Es gibt keine Vorabdownloads des gesamten Bildbestands, keine Cache-Busting-Parameter und keine Laufzeitbibliothek für Bilder.
 
 Porträts nutzen den normalen HTTP-Cache des Browsers. Der Entwicklungsserver liefert sie als `image/webp` mit `Cache-Control: public, max-age=3600`, ETag und Last-Modified sowie `304 Not Modified` bei gültigen bedingten Anfragen. HTML, CSS und JavaScript bleiben für die Entwicklung mit `no-store` versehen. Beim statischen Hosting MIME-Typ und Cache-Control entsprechend konfigurieren; die tatsächliche Cache-Dauer legt der Host fest. Wird ein Porträt ersetzt, einen neuen Dateinamen wie `example-v2.webp` verwenden und die Metadaten anpassen. Es gibt keinen Service Worker und keine Garantie, dass ein zuvor geladenes Bild im Browser-Cache verbleibt.
 
@@ -82,6 +92,8 @@ Mit einer Maus neigt sich die aufgedeckte Karte beim Bewegen des Zeigers über d
 Auf Mobilgeräten reagiert die aufgedeckte Karte zusätzlich auf das Neigen des Geräts, sofern der Browser Orientierungsdaten ohne neue Zustimmung liefert. Die erste gültige Messung kalibriert die aktuelle Haltung als neutral; Hoch- und Querformat werden berücksichtigt. Die App ruft niemals `requestPermission()` auf. Bietet der Browser diese Methode an, liest die App nur den bestehenden Status für Beschleunigungs- und Gyroskopsensoren aus und aktiviert den Effekt ausschließlich, wenn beide bereits erlaubt sind. Bei ausstehender Zustimmung, verweigertem oder nicht auslesbarem Status bleibt die Karte ruhig. Browser ohne diese Berechtigungsmethode können Orientierungsereignisse direkt liefern. Voraussetzung ist ein sicherer Kontext, beim Hosting also HTTPS. Sensordaten werden nur für die sichtbare aufgedeckte Karte verarbeitet und weder gespeichert noch übertragen. Bei Fokusverlust, Hintergrundwechsel, Bildschirmrotation oder reduzierter Bewegung wird der Effekt zurückgesetzt und gegebenenfalls neu kalibriert.
 
 Der dezente Eintrag „COLLECTION“ öffnet jederzeit eine eigene, vertikal scrollbare Sammlung, auch während der Wartezeit und nach Abschluss des Decks. Alle 50 Karten stehen nach Nummer sortiert in einem Raster mit zwei Spalten auf Mobilgeräten, drei auf Tablets und vier bis fünf auf Desktop-Bildschirmen. Noch nicht entdeckte Karten bleiben verdeckt; ihre Zitate stehen weder im Sammlungs-Markup noch in Screenreader-Beschriftungen. Entdeckte Karten lassen sich als große Karte ansehen, ohne eine Ziehung oder neue Wartezeit auszulösen. „BACK TO COLLECTION“ stellt Scrollposition und Tastaturfokus wieder her; Escape führt von der Detailansicht zur Sammlung und dann zum Deck zurück. „X OF 50 DISCOVERED“ und eine schmale Linie zeigen den lebenslangen Fortschritt.
+
+Unter den 50 regulären Karten stehen fünf verdeckte Legendary-Plätze mit „COMING SOON“. Diese Vorschau bleibt auch nach Abschluss oder Neustart eines Decks verdeckt. Sie lädt keine Porträts, verrät keine Namen oder Zitate und verändert weder den Entdeckungsfortschritt noch die Wartezeit.
 
 Unten im Deck steht ein dezenter „made by oliverjessner.at“-Link. Nach Karte 50 öffnet „COMPLETE DECK“ die Abschlussansicht. „START A NEW DECK“ wird erst nach Ablauf der aktuellen Wartezeit verfügbar und setzt nach Bestätigung nur das aktuelle Deck zurück. Alle entdeckten Karten bleiben in der Sammlung erhalten. Eine bevorzugte reduzierte Bewegung wird berücksichtigt; Fokusmarkierungen und Screenreader-Ankündigungen unterstützen die Bedienung.
 
@@ -103,7 +115,7 @@ src/
   styles.css
   app.js
   portraits.js
-  assets/legendary/  # optionale WebP-Quellen; aktuell leer
+  assets/legendary/  # fünf vorbereitete WebP-Bilddateien
 scripts/
   build.mjs
   dev.mjs

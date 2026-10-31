@@ -340,6 +340,18 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold-light); ou
 .collection-card .card-front-symbol { font-size: 7cqi; }
 .collection-card.is-discovered { transition: transform 300ms var(--ease); }
 .collection-card.is-discovered:focus-visible { outline-offset: 6px; }
+.legendary-preview { margin-top: 76px; padding-top: 32px; border-top: 1px solid #c7ae8026; }
+.legendary-preview-header { margin-bottom: 30px; }
+.legendary-preview-header .eyebrow { margin-bottom: 12px; font-size: 8px; }
+.legendary-preview-header h2 { margin: 0; color: var(--gold-light); font: italic 400 clamp(36px, 4vw, 52px)/1.12 Georgia, "Times New Roman", serif; letter-spacing: -.035em; }
+.legendary-preview-description { margin: 16px 0 0; color: #9e947f; font: 400 13px/1.6 Georgia, "Times New Roman", serif; }
+.app .collection-view .legendary-preview-card .card-back { border-color: #cbb28170; background: radial-gradient(ellipse at 50% -10%, #a17f3540, transparent 68%), linear-gradient(135deg, #242319, #151710 52%, #222116); }
+.legendary-preview-card .card-back-inner { border-color: #cfb5765c; }
+.legendary-preview-card .card-back-inner::before { border-color: #cbb28124; }
+.legendary-preview-card .card-emblem { color: #d2b474; opacity: .86; }
+.legendary-preview-card .card-back-title { color: #ddc896; font-size: 8.7cqi; letter-spacing: .14em; }
+.legendary-preview-card .card-back-subtitle { color: #a69368; letter-spacing: .25em; }
+.legendary-preview-card .collection-lock-status { color: #bca572; }
 .collection-footnote { margin: 52px 0 0; color: #857c6a; text-align: center; font: italic 13px/1.6 Georgia, "Times New Roman", serif; }
 .collection-detail { position: relative; padding: 30px 0 16px; }
 .detail-back { margin-bottom: 32px; }
@@ -389,6 +401,10 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold-light); ou
   .collection-card .card-corner { font-size: 7px; }
   .collection-card .card-emblem { margin: 8px 0; width: 80%; }
   .collection-lock-status { margin-top: 13px; }
+  .legendary-preview { margin-top: 48px; padding-top: 26px; }
+  .legendary-preview-header { margin-bottom: 26px; }
+  .legendary-preview-header .eyebrow { font-size: 7px; }
+  .legendary-preview-description { margin-top: 13px; font-size: 12px; }
   .collection-footnote { margin-top: 36px; font-size: 12px; }
   .detail-back { margin-bottom: 25px; }
   .collection-detail { padding-top: 20px; }

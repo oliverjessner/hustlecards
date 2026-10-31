@@ -1247,3 +1247,116 @@ test('cross-tab discovery mounts only the visible lazy portrait and preserves pr
   assert.deepEqual(app.state.discoveredIds, [1, 2, 50]);
   assert.equal(app.state.lastDrawnAt, NOW + 1000);
 });
+
+function legendaryPreviewCards(app) {
+  return app.get('legendary-preview-grid').querySelectorAll('.legendary-preview-card');
+}
+
+function assertLockedLegendaryPreviews(app) {
+  const cards = legendaryPreviewCards(app);
+  assert.equal(cards.length, 5);
+  assert.equal(app.get('legendary-preview-grid').tagName, 'OL');
+  assert.deepEqual(cards.map(card => card.dataset.previewId), ['legendary-01', 'legendary-02', 'legendary-03', 'legendary-04', 'legendary-05']);
+  for (const [index, card] of cards.entries()) {
+    assert.equal(card.tagName, 'DIV');
+    assert.equal(card.classList.contains('is-locked'), true);
+    assert.equal(card.classList.contains('is-discovered'), false);
+    assert.equal(card.dataset.rarity, 'legendary');
+    assert.equal(card.dataset.cardId, undefined);
+    assert.equal(card.getAttribute('aria-label'), `Legendary preview ${index + 1} of 5. Locked. Coming soon.`);
+    assert.equal(card.getAttribute('tabindex'), null);
+    assert.equal(card.querySelector('button'), null);
+    assert.equal(card.querySelector('a'), null);
+    assert.notEqual(card.querySelector('.card-back'), null);
+    assert.equal(card.querySelector('.card-front'), null);
+    assert.equal(card.querySelector('.card-quote'), null);
+    assert.equal(card.querySelector('.card-portrait'), null);
+    assert.equal(card.querySelector('img'), null);
+    assert.match(card.textContent, /LEGENDARY/);
+    assert.match(card.textContent, /COMING SOON/);
+    for (const name of ['src', 'srcset', 'alt', 'title', 'data-name', 'data-portrait', 'data-portrait-src']) {
+      assert.equal(card.getAttribute(name), null, `${name} must not expose an unreleased identity or portrait`);
+    }
+  }
+}
+
+test('the collection shows five covered Legendary previews during cooldown without changing the 50-card progress', async () => {
+  const app = loadApp({ saved: collectionState({ drawnIds: [1] }) });
+  assert.equal(app.get('reveal-actions').hidden, true);
+  await app.get('open-collection').click();
+  assert.equal(app.get('app').dataset.view, 'collection');
+  assert.equal(app.get('collection-view').hidden, false);
+  assert.equal(app.get('collection-gallery').hidden, false);
+  assert.equal(app.get('legendary-preview').hidden, false);
+  assert.equal(app.get('legendary-preview').closest('#collection-gallery'), app.get('collection-gallery'));
+  assertLockedLegendaryPreviews(app);
+  assert.equal(collectionCards(app).length, 50);
+  assert.equal(app.get('collection-progress').textContent, '1 OF 50 DISCOVERED');
+  assert.equal(Number(app.get('collection-meter').value), 1);
+  assert.equal(app.get('collection-meter').getAttribute('max'), '50');
+  assert.deepEqual(app.imageSources, []);
+});
+
+test('locked Legendary previews cannot activate a detail or draw and never load portrait metadata', async () => {
+  const portraits = Object.fromEntries(Array.from({ length: 49 }, (_, index) => [index + 2, { ...TEST_PORTRAIT, src: `./assets/legendary/test-${index + 2}.webp` }]));
+  const app = loadApp({ saved: collectionState({ drawnIds: [1] }), portraits });
+  const before = app.state;
+  const writes = app.writes.length;
+  await app.get('open-collection').click();
+  for (const card of legendaryPreviewCards(app)) {
+    await card.click();
+    await card.dispatch('keydown', { key: 'Enter' });
+    await card.dispatch('keydown', { key: ' ' });
+  }
+  assertLockedLegendaryPreviews(app);
+  assert.equal(app.get('app').dataset.view, 'collection');
+  assert.equal(app.get('collection-detail').hidden, true);
+  assert.equal(app.mode, 'REVEALED');
+  assert.equal(app.get('reveal-actions').hidden, true);
+  assert.deepEqual(app.state, before);
+  assert.equal(app.writes.length, writes);
+  assert.deepEqual(app.imageSources, []);
+  app.tick(NOW + DAY - 1);
+  assert.equal(app.get('reveal-actions').hidden, true);
+});
+
+test('Legendary previews remain locked after all 50 cards and a new deck while lifetime progress stays at 50', async () => {
+  const allIds = Array.from({ length: 50 }, (_, index) => index + 1);
+  const app = loadApp({ saved: collectionState({ drawnIds: allIds }) });
+  await app.get('draw-again').click();
+  assert.equal(app.mode, 'COMPLETED');
+  await app.get('open-collection').click();
+  assertLockedLegendaryPreviews(app);
+  assert.equal(app.get('collection-progress').textContent, '50 OF 50 DISCOVERED');
+  assert.equal(collectionCards(app).length, 50);
+  await app.get('collection-close').click();
+  app.tick(NOW + DAY);
+  await app.get('new-deck').click();
+  await app.get('reset-confirm').click();
+  assert.equal(app.mode, 'IDLE');
+  assert.equal(app.buttons().length, 3);
+  assert.deepEqual(app.state.drawnIds, []);
+  assert.deepEqual(app.state.discoveredIds, allIds);
+  await app.get('open-collection').click();
+  assertLockedLegendaryPreviews(app);
+  assert.equal(app.get('collection-progress').textContent, '50 OF 50 DISCOVERED');
+  assert.equal(Number(app.get('collection-meter').value), 50);
+  assert.deepEqual(app.imageSources, []);
+});
+
+test('Legendary previews are part of the gallery and remain covered when returning from a normal card detail', async () => {
+  const app = loadApp({ saved: collectionState({ discoveredIds: [1, 45] }) });
+  await app.get('open-collection').click();
+  app.get('collection-view').scrollTop = 2800;
+  await collectionCard(app, 45).click();
+  assert.equal(app.get('collection-gallery').hidden, true);
+  assert.equal(app.get('legendary-preview').closest('#collection-gallery').hidden, true);
+  assert.equal(app.get('collection-detail').hidden, false);
+  assert.equal(app.get('collection-detail').querySelector('.legendary-preview-card'), null);
+  await app.get('detail-back').click();
+  assert.equal(app.get('collection-gallery').hidden, false);
+  assert.equal(app.get('collection-view').scrollTop, 2800);
+  assert.equal(app.document.activeElement, collectionCard(app, 45));
+  assertLockedLegendaryPreviews(app);
+  assert.deepEqual(app.imageSources, []);
+});

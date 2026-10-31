@@ -222,7 +222,7 @@ test('portrait source entry must appear exactly once before the application', as
 
 test('WebP portraits are copied byte for byte as separate approved files without encoding or inlining', async (t) => {
   const image = '<img src="./assets/legendary/founder-v1.webp" width="600" height="900" loading="lazy" decoding="async" alt="">';
-  const app = await fixture(t, { html: template.replace('</main>', `${image}</main>`), assets: { 'founder-v1.webp': webp, '.gitkeep': '' } });
+  const app = await fixture(t, { html: template.replace('</main>', `${image}</main>`), assets: { 'founder-v1.webp': webp, '.gitkeep': '', '.DS_Store': Buffer.from('macOS Finder metadata') } });
   assert.match(app.build(), /1 external WebP portrait asset/);
   const output = await app.output();
   assert.ok(output.includes('src="./assets/legendary/founder-v1.webp"'));
@@ -231,6 +231,7 @@ test('WebP portraits are copied byte for byte as separate approved files without
   assert.deepEqual(await readdir(path.join(app.directory, 'dist')), ['assets', 'index.html']);
   assert.deepEqual(await readdir(path.join(app.directory, 'dist/assets')), ['legendary']);
   assert.deepEqual(await readdir(path.join(app.directory, 'dist/assets/legendary')), ['founder-v1.webp']);
+  assert.deepEqual(await readFile(path.join(app.assetDirectory, '.DS_Store')), Buffer.from('macOS Finder metadata'));
   assert.equal(new URL('./assets/legendary/founder-v1.webp', 'https://example.com/products/hustlecards/index.html').pathname, '/products/hustlecards/assets/legendary/founder-v1.webp');
 });
 
@@ -281,6 +282,9 @@ test('nested and symlinked portrait entries cannot be copied into the distributi
   await symlink(outside, path.join(app.assetDirectory, 'linked.webp'));
   assertRejected(app.build, /Unsupported Legendary asset entry/);
   await rm(path.join(app.assetDirectory, 'linked.webp'));
+  await symlink(outside, path.join(app.assetDirectory, '.DS_Store'));
+  assertRejected(app.build, /Unsupported Legendary asset entry/);
+  await rm(path.join(app.assetDirectory, '.DS_Store'));
   await rm(app.assetDirectory, { recursive: true });
   const outsideDirectory = path.join(app.directory, 'outside-assets');
   await mkdir(outsideDirectory);

@@ -28,7 +28,7 @@ async function portraitAssets() {
   const entries = (await readdir(portraitDirectory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
   return Promise.all(entries.map(async (entry) => {
     assert(entry.isFile() && !entry.isSymbolicLink(), `Unsupported Legendary asset entry: ${entry.name}.`);
-    if (entry.name === '.gitkeep') return null;
+    if (entry.name === '.gitkeep' || entry.name === '.DS_Store') return null;
     assert(portraitName.test(entry.name), `Only lowercase WebP portrait filenames are allowed: ${entry.name}.`);
     const bytes = await readFile(path.join(portraitDirectory, entry.name));
     assert(bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP', `Invalid WebP portrait: ${entry.name}.`);
