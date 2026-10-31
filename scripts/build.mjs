@@ -68,11 +68,25 @@ try {
 
   // Validate the original sources before optimizers can discard any references.
   validateExport(inlined);
-  const log = (error) => { throw error instanceof Error ? error : new Error(String(error)); };
+  async function minifyChecked(text, options) {
+    const errors = [];
+    const result = await minify(text, {
+      ...options,
+      log: (entry) => {
+        // html-minifier-terser reports successful timing through the same callback
+        // as CleanCSS and Terser errors. Collect failures so asynchronous CSS
+        // callbacks can finish before we reject the export.
+        if (typeof entry === 'string' && /^minified in: \d+ms$/.test(entry)) return;
+        errors.push(entry instanceof Error ? entry.message : String(entry));
+      },
+    });
+    assert(errors.length === 0, errors.join('\n'));
+    return result;
+  }
   async function minifyRawText(tag, text, options) {
     const open = `<${tag}>`;
     const close = `</${tag}>`;
-    const result = await minify(`${open}${text}${close}`, { ...options, log });
+    const result = await minifyChecked(`${open}${text}${close}`, options);
     assert(result.startsWith(open) && result.endsWith(close), `Unexpected minified ${tag} wrapper.`);
     // Protect the HTML parser again in case an optimizer rewrites string escapes.
     return escapeRawText(result.slice(open.length, -close.length), tag);
@@ -83,15 +97,14 @@ try {
   const compactJavascript = await minifyRawText('script', safeJavascript, {
     minifyJS: { compress: false, mangle: false, format: { comments: false, inline_script: true } },
   });
-  const html = await minify(template
+  const html = (await minifyChecked(template
     .replace(stylesheet, () => `<style>${compactCss}</style>`)
     .replace(script, () => `<script>${compactJavascript}</script>`), {
     collapseWhitespace: true,
     conservativeCollapse: true,
     removeComments: true,
     keepClosingSlash: true,
-    log,
-  });
+  })).trimEnd() + '\n';
   validateExport(html);
   // Only the generated destination is removed; source and repository files stay intact.
   await rm(destination, { recursive: true, force: true });

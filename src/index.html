@@ -12,39 +12,74 @@
   </head>
   <body>
     <div class="app" id="app" data-state="IDLE">
-      <p id="draw-availability" class="draw-availability" role="timer" aria-live="off">
-        <span class="availability-dot" aria-hidden="true"></span>
-        <span id="availability-label">Your next card is ready</span>
-        <time id="availability-time" hidden></time>
-      </p>
+      <div id="draw-view" class="draw-view">
+        <nav class="collection-nav" aria-label="Explore">
+          <button id="open-collection" class="collection-link" type="button">COLLECTION <span aria-hidden="true">↗</span></button>
+        </nav>
+        <p id="draw-availability" class="draw-availability" role="timer" aria-live="off">
+          <span class="availability-dot" aria-hidden="true"></span>
+          <span id="availability-label">Your next card is ready</span>
+          <time id="availability-time" hidden></time>
+        </p>
 
-      <main class="experience" aria-label="Hustle Cards deck">
-        <div class="intro" id="intro">
-          <h1 class="hero-title">Draw one hustle card every 24h</h1>
-        </div>
-
-        <div class="deck-space">
-          <div id="deck" class="card-stage" role="group" aria-label="Choose a face-down card"></div>
-          <div class="stage-horizon" aria-hidden="true"></div>
-        </div>
-
-        <div class="experience-controls">
-          <div id="reveal-actions" class="reveal-actions" hidden>
-            <button id="draw-again" class="primary-button" type="button"><span id="draw-again-label">DRAW AGAIN</span><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h13m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <main class="experience" aria-label="Hustle Cards deck">
+          <div class="intro" id="intro">
+            <h1 class="hero-title">Draw one hustle card every 24h</h1>
           </div>
-        </div>
 
-        <section id="completion" class="completion" aria-labelledby="completion-title" hidden>
-          <div class="completion-seal" aria-hidden="true"><svg viewBox="0 0 100 100" fill="none"><path d="m50 4 40 23v46L50 96 10 73V27Z" stroke="currentColor"/><path d="m50 13 32 19v36L50 87 18 68V32Z" stroke="currentColor" opacity=".35"/><path d="m32 51 12 12 25-27" stroke="currentColor" stroke-width="2"/></svg></div>
-          <p class="eyebrow">THE COLLECTION IS COMPLETE</p>
-          <h1 id="completion-title">YOU'VE DRAWN<br><em>THEM ALL.</em></h1>
-          <p>50 cards. 50 reminders to keep going.</p>
-          <button id="new-deck" class="primary-button" type="button">START A NEW DECK <span aria-hidden="true">↗</span></button>
-          <span class="completion-footnote">The deck ends. Your ambition doesn't.</span>
-        </section>
+          <div class="deck-space">
+            <div id="deck" class="card-stage" role="group" aria-label="Choose a face-down card"></div>
+            <div class="stage-horizon" aria-hidden="true"></div>
+          </div>
+
+          <div class="experience-controls">
+            <div id="reveal-actions" class="reveal-actions" hidden>
+              <button id="draw-again" class="primary-button" type="button"><span id="draw-again-label">DRAW AGAIN</span><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h13m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+          </div>
+
+          <section id="completion" class="completion" aria-labelledby="completion-title" hidden>
+            <div class="completion-seal" aria-hidden="true"><svg viewBox="0 0 100 100" fill="none"><path d="m50 4 40 23v46L50 96 10 73V27Z" stroke="currentColor"/><path d="m50 13 32 19v36L50 87 18 68V32Z" stroke="currentColor" opacity=".35"/><path d="m32 51 12 12 25-27" stroke="currentColor" stroke-width="2"/></svg></div>
+            <p class="eyebrow">THE COLLECTION IS COMPLETE</p>
+            <h1 id="completion-title">YOU'VE DRAWN<br><em>THEM ALL.</em></h1>
+            <p>50 cards. 50 reminders to keep going.</p>
+            <button id="new-deck" class="primary-button" type="button">START A NEW DECK <span aria-hidden="true">↗</span></button>
+            <span class="completion-footnote">The deck ends. Your ambition doesn't.</span>
+          </section>
+        </main>
+
+        <footer class="site-credit">made by <a href="https://oliverjessner.at/" target="_blank" rel="noopener noreferrer">oliverjessner.at</a></footer>
+      </div>
+
+      <main id="collection-view" class="collection-view" aria-labelledby="collection-title" hidden>
+        <div class="collection-shell">
+          <header class="collection-header">
+            <button id="collection-close" class="collection-back" type="button"><span aria-hidden="true">←</span> BACK TO DECK</button>
+            <span class="collection-wordmark" aria-hidden="true">HUSTLE CARDS</span>
+          </header>
+
+          <section id="collection-gallery" aria-labelledby="collection-title">
+            <div class="collection-intro">
+              <p class="eyebrow">THE MINDSET COLLECTION</p>
+              <h1 id="collection-title" tabindex="-1">A mindset.<br><em>Collected.</em></h1>
+              <p class="collection-description">One card at a time. Yours to keep.</p>
+              <div class="collection-progress-wrap">
+                <p id="collection-progress" class="collection-progress">0 OF 50 DISCOVERED</p>
+                <progress id="collection-meter" class="collection-meter" value="0" max="50" aria-labelledby="collection-progress">0 of 50 discovered</progress>
+              </div>
+            </div>
+            <ol id="collection-grid" class="collection-grid" aria-label="All 50 cards, ordered by number"></ol>
+            <p class="collection-footnote">A daily ritual. A lasting collection.</p>
+          </section>
+
+          <section id="collection-detail" class="collection-detail" aria-label="Collected card" hidden>
+            <button id="detail-back" class="collection-back detail-back" type="button"><span aria-hidden="true">←</span> BACK TO COLLECTION</button>
+            <article id="detail-card" class="collection-detail-card" tabindex="-1" aria-label="Collected card"></article>
+            <p class="collection-detail-caption">Part of your collection. Always yours.</p>
+          </section>
+        </div>
       </main>
 
-      <footer class="site-credit">made by <a href="https://oliverjessner.at/" target="_blank" rel="noopener noreferrer">oliverjessner.at</a></footer>
       <p id="storage-notice" class="storage-notice" role="status" hidden></p>
       <p id="live-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
     </div>
@@ -53,7 +88,7 @@
       <span class="dialog-star" aria-hidden="true">✦</span>
       <p class="eyebrow">A FRESH PERSPECTIVE</p>
       <h2 id="reset-title">Start a new chapter?</h2>
-      <p id="reset-description">This resets your drawn cards and shuffles all 50 back into the deck.</p>
+      <p id="reset-description">This shuffles all 50 cards back into the deck. Your discovered collection stays with you.</p>
       <div class="dialog-actions">
         <button id="reset-cancel" class="secondary-button" type="button" autofocus>KEEP MY DECK</button>
         <button id="reset-confirm" class="primary-button" type="button">RESET DECK</button>

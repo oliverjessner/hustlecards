@@ -44,7 +44,9 @@ test('build embeds all source, removes stale output, and writes only index.html'
   await writeFile(path.join(app.directory, 'dist/old-asset.js'), 'stale');
   await mkdir(path.join(app.directory, 'dist/obsolete'));
   await writeFile(path.join(app.directory, 'dist/obsolete/data.json'), '{}');
-  assert.match(app.build(), /Exported dist\/index\.html/);
+  const diagnostics = app.build();
+  assert.match(diagnostics, /Exported dist\/index\.html/);
+  assert.doesNotMatch(diagnostics, /minified in:/);
   const output = await app.output();
   assert.deepEqual(await readdir(path.join(app.directory, 'dist')), ['index.html']);
   assert.match(output, /<style>body\{color:#fff\}<\/style>/);
@@ -88,9 +90,9 @@ test('build minifies HTML, CSS and JavaScript while preserving meaningful whites
 });
 
 test('JavaScript minification errors fail before replacing the existing export', async (t) => {
-  const app = await fixture(t, { js: 'const = ;' });
+  const app = await fixture(t, { js: 'const broken = ;' });
   await writeFile(path.join(app.directory, 'dist/index.html'), 'previous export');
-  assertRejected(app.build, /Build failed:/);
+  assertRejected(app.build, /Build failed: Unexpected token/);
   assert.equal(await app.output(), 'previous export');
 });
 

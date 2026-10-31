@@ -2,7 +2,8 @@
   'use strict';
 
   const STORAGE_KEY = 'hustle-cards:v1';
-  const VERSION = 1;
+  // Keep the original key so existing offline exports migrate in place.
+  const VERSION = 2;
   const DAY_MS = 24 * 60 * 60 * 1000;
   const MAX_DRAW_TIMESTAMP = 8.64e15 - DAY_MS;
   const MODES = Object.freeze({ IDLE: 'IDLE', ANIMATING: 'ANIMATING', REVEALED: 'REVEALED', COMPLETED: 'COMPLETED' });
@@ -57,7 +58,7 @@
     "Don't chase the competition. Change the game.",
     'Make progress your addiction.',
     'The best revenge is building a life you love.'
-  ].map((quote, index) => Object.freeze({ id: index + 1, quote })));
+  ].map((quote, index) => Object.freeze({ id: index + 1, quote, rarity: 'standard' })));
   const $ = (id) => document.getElementById(id);
   const ui = {
     app: $('app'), deck: $('deck'), intro: $('intro'),
@@ -65,7 +66,12 @@
     againLabel: $('draw-again-label') ?? $('draw-again'), newDeck: $('new-deck'),
     availability: $('draw-availability'), availabilityLabel: $('availability-label'),
     availabilityTime: $('availability-time'), notice: $('storage-notice'), live: $('live-status'),
-    dialog: $('reset-dialog'), cancel: $('reset-cancel'), confirm: $('reset-confirm')
+    dialog: $('reset-dialog'), cancel: $('reset-cancel'), confirm: $('reset-confirm'),
+    drawView: $('draw-view'), collection: $('collection-view'), openCollection: $('open-collection'),
+    closeCollection: $('collection-close'), collectionTitle: $('collection-title'),
+    progress: $('collection-progress'), meter: $('collection-meter'),
+    gallery: $('collection-gallery'), grid: $('collection-grid'),
+    detail: $('collection-detail'), detailBack: $('detail-back'), detailCard: $('detail-card')
   };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const mouseHover = window.matchMedia('(any-hover: hover) and (any-pointer: fine)');
@@ -75,6 +81,10 @@
   let storage = null;
   let storageAvailable = true;
   let mode = MODES.IDLE;
+  let view = 'deck';
+  let collectionScroll = 0;
+  let collectionFocus = null;
+  let collectionReturnFocus = null;
   let operation = 0;
   let resetFocus = null;
   let resetting = false;
@@ -91,23 +101,35 @@
   }
 
   function emptyState() {
-    return { version: VERSION, drawnIds: [], lastDrawnId: null, lastDrawnAt: null, deckId: newDeckId() };
+    return { version: VERSION, drawnIds: [], discoveredIds: [], lastDrawnId: null, lastDrawnAt: null, deckId: newDeckId(), deckGeneration: 0 };
+  }
+
+  function validIds(ids) {
+    return Array.isArray(ids) ? [...new Set(ids.filter((id) => Number.isInteger(id) && id >= 1 && id <= CARDS.length))] : [];
+  }
+
+  function discoveries(...groups) {
+    return [...new Set(groups.flat())].sort((a, b) => a - b);
   }
 
   function sanitize(raw) {
-    if (!raw || typeof raw !== 'object' || raw.version !== VERSION || !Array.isArray(raw.drawnIds)) return emptyState();
-    const drawnIds = [...new Set(raw.drawnIds.filter((id) => Number.isInteger(id) && id >= 1 && id <= CARDS.length))];
+    if (!raw || typeof raw !== 'object' || ![1, VERSION].includes(raw.version) || !Array.isArray(raw.drawnIds)) return null;
+    const drawnIds = validIds(raw.drawnIds);
+    const validDeckId = typeof raw.deckId === 'string' && raw.deckId.length > 0 && raw.deckId.length < 100;
+    if (raw.version === VERSION && !validDeckId) return null;
     return {
       version: VERSION,
       drawnIds,
+      discoveredIds: discoveries(drawnIds, validIds(raw.discoveredIds)),
       lastDrawnId: drawnIds.includes(raw.lastDrawnId) ? raw.lastDrawnId : drawnIds.at(-1) ?? null,
       lastDrawnAt: Number.isSafeInteger(raw.lastDrawnAt) && raw.lastDrawnAt > 0 && raw.lastDrawnAt <= MAX_DRAW_TIMESTAMP ? raw.lastDrawnAt : null,
-      deckId: typeof raw.deckId === 'string' && raw.deckId.length > 0 && raw.deckId.length < 100 ? raw.deckId : 'legacy'
+      deckId: validDeckId ? raw.deckId : 'legacy',
+      deckGeneration: Number.isSafeInteger(raw.deckGeneration) && raw.deckGeneration >= 0 ? raw.deckGeneration : 0
     };
   }
 
   function parseState(value) {
-    try { return sanitize(JSON.parse(value)); } catch { return emptyState(); }
+    try { return sanitize(JSON.parse(value)); } catch { return null; }
   }
 
   function temporaryStorage() {
@@ -120,7 +142,7 @@
   try {
     storage = window.localStorage;
     const saved = storage.getItem(STORAGE_KEY);
-    state = saved === null ? emptyState() : parseState(saved);
+    state = parseState(saved) ?? state;
     // Probe the actual write permission and repair malformed state using only our own key.
     storage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -136,7 +158,11 @@
     if (!storageAvailable) return state;
     try {
       const saved = storage.getItem(STORAGE_KEY);
-      return saved === null ? emptyState() : parseState(saved);
+      // Deletion or a malformed cross-tab write must not erase an active deck,
+      // lifetime discoveries, or the daily lock. Resets write a valid new deck.
+      const incoming = parseState(saved);
+      if (incoming === null) persist();
+      return incoming ?? state;
     } catch {
       temporaryStorage();
       return state;
@@ -144,9 +170,15 @@
   }
 
   function mergeState(incoming) {
-    if (incoming.deckId !== state.deckId) return incoming;
+    const discoveredIds = discoveries(state.discoveredIds, incoming.discoveredIds);
+    if (incoming.deckId !== state.deckId || incoming.deckGeneration !== state.deckGeneration) {
+      const staleGeneration = incoming.deckGeneration < state.deckGeneration;
+      const staleDraw = incoming.deckGeneration === state.deckGeneration && (incoming.lastDrawnAt ?? 0) < (state.lastDrawnAt ?? 0);
+      const current = staleGeneration || staleDraw ? state : incoming;
+      return { ...current, discoveredIds };
+    }
     const newest = (state.lastDrawnAt ?? 0) > (incoming.lastDrawnAt ?? 0) ? state : incoming;
-    return { ...newest, drawnIds: [...new Set([...state.drawnIds, ...incoming.drawnIds])] };
+    return { ...newest, drawnIds: discoveries(state.drawnIds, incoming.drawnIds), discoveredIds };
   }
 
   function randomBelow(limit) {
@@ -182,6 +214,7 @@
     ui.completion.hidden = mode !== MODES.COMPLETED;
     ui.deck.hidden = mode === MODES.COMPLETED;
     ui.intro.hidden = mode === MODES.COMPLETED;
+    ui.openCollection.disabled = mode === MODES.ANIMATING;
     updateAvailability();
     syncOrientationTilt();
   }
@@ -219,7 +252,7 @@
       ui.availabilityTime.removeAttribute('datetime');
       ui.availabilityTime.removeAttribute('title');
     }
-    ui.againLabel.textContent = exhausted ? 'VIEW COLLECTION' : 'DRAW AGAIN';
+    ui.againLabel.textContent = exhausted ? 'COMPLETE DECK' : 'DRAW AGAIN';
     ui.actions.hidden = mode !== MODES.REVEALED || (!ready && !exhausted);
     ui.newDeck.hidden = !ready;
     ui.newDeck.disabled = !ready;
@@ -236,6 +269,118 @@
     <path d="M57 111V73h8v15h30V73h8v38h-8V96H65v15Z" fill="currentColor"/>
     <path d="m80 48 3 6-3 6-3-6Zm0 76 3 6-3 6-3-6Z" fill="currentColor"/>
   </svg>`;
+
+  function frontMarkup() {
+    return `<span class="card-face card-front" aria-hidden="true">
+      <span class="card-front-top"><span>THE MINDSET COLLECTION</span><span class="card-number"></span></span>
+      <span class="card-quote-wrap"><span class="quote-mark" aria-hidden="true">“</span><span class="card-quote" role="blockquote"></span></span>
+      <span class="card-front-rule"></span>
+      <span class="card-front-bottom"><span>HUSTLE CARDS</span><span class="card-front-symbol" aria-hidden="true">✦</span></span>
+    </span>`;
+  }
+
+  function collectionCard(card) {
+    const item = document.createElement('li');
+    item.className = 'collection-item';
+    const discovered = state.discoveredIds.includes(card.id);
+    const face = document.createElement(discovered ? 'button' : 'div');
+    face.className = `collection-card ${discovered ? 'is-discovered' : 'is-locked'}`;
+    face.dataset.cardId = String(card.id);
+    face.dataset.rarity = card.rarity;
+    if (discovered) {
+      face.setAttribute('type', 'button');
+      face.setAttribute('aria-label', `View card ${card.id} of ${CARDS.length}. ${card.quote}`);
+      face.innerHTML = frontMarkup();
+      fillQuote(face, card);
+      face.addEventListener('click', () => openDetail(card.id));
+    } else {
+      face.setAttribute('role', 'img');
+      face.setAttribute('aria-label', `Card ${card.id} of ${CARDS.length}. Locked.`);
+      // There is deliberately no front, quote, title, or quote-bearing label here.
+      face.innerHTML = `<span class="card-face card-back" aria-hidden="true"><span class="card-back-inner">
+        <span class="collection-lock-number">Nº ${String(card.id).padStart(2, '0')}</span>
+        ${emblem}<span class="card-back-title">HUSTLE</span><span class="card-back-subtitle">C A R D S</span>
+        <span class="collection-lock-status">LOCKED</span>
+      </span></span>`;
+    }
+    item.append(face);
+    return item;
+  }
+
+  function galleryButton(id) {
+    return [...ui.grid.querySelectorAll('.is-discovered')].find((button) => button.dataset.cardId === String(id));
+  }
+
+  let renderedDiscoveries = null;
+  function renderCollection() {
+    const count = state.discoveredIds.length;
+    ui.progress.textContent = `${count} OF ${CARDS.length} DISCOVERED`;
+    ui.meter.value = count;
+    ui.meter.setAttribute('aria-valuetext', `${count} of ${CARDS.length} discovered`);
+    const signature = state.discoveredIds.join(',');
+    if (signature === renderedDiscoveries) return;
+    const focusedId = document.activeElement?.closest('.is-discovered')?.dataset.cardId;
+    const scroll = ui.collection.scrollTop;
+    ui.grid.replaceChildren(...CARDS.map(collectionCard));
+    renderedDiscoveries = signature;
+    if (view === 'collection' && focusedId) galleryButton(focusedId)?.focus({ preventScroll: true });
+    ui.collection.scrollTop = scroll;
+  }
+
+  function setView(nextView) {
+    view = nextView;
+    ui.app.dataset.view = view;
+    ui.drawView.hidden = view !== 'deck';
+    ui.collection.hidden = view === 'deck';
+    ui.gallery.hidden = view === 'detail';
+    ui.detail.hidden = view !== 'detail';
+    resetCardTilts();
+    syncOrientationTilt();
+  }
+
+  function openCollection() {
+    if (view !== 'deck' || mode === MODES.ANIMATING || ui.dialog.open) return;
+    refreshFromStorage();
+    collectionReturnFocus = document.activeElement;
+    renderCollection();
+    setView('collection');
+    ui.collection.scrollTop = collectionScroll;
+    ui.collectionTitle.focus({ preventScroll: true });
+  }
+
+  function closeCollection() {
+    if (view === 'deck') return;
+    if (view === 'collection') collectionScroll = ui.collection.scrollTop;
+    setView('deck');
+    ui.detailCard.replaceChildren();
+    if (collectionReturnFocus?.isConnected) collectionReturnFocus.focus({ preventScroll: true });
+    else ui.openCollection.focus({ preventScroll: true });
+  }
+
+  function openDetail(id) {
+    if (view !== 'collection' || !state.discoveredIds.includes(id)) return;
+    const card = CARDS.find((entry) => entry.id === id);
+    if (!card) return;
+    collectionScroll = ui.collection.scrollTop;
+    collectionFocus = id;
+    ui.detailCard.dataset.cardId = String(id);
+    ui.detailCard.dataset.rarity = card.rarity;
+    ui.detailCard.setAttribute('aria-label', `Card ${id} of ${CARDS.length}. ${card.quote}`);
+    ui.detailCard.innerHTML = frontMarkup();
+    fillQuote(ui.detailCard, card);
+    ui.detailCard.querySelector('.card-front').setAttribute('aria-hidden', 'false');
+    setView('detail');
+    ui.collection.scrollTop = 0;
+    ui.detailCard.focus({ preventScroll: true });
+  }
+
+  function closeDetail() {
+    if (view !== 'detail') return;
+    setView('collection');
+    ui.detailCard.replaceChildren();
+    ui.collection.scrollTop = collectionScroll;
+    (galleryButton(collectionFocus) ?? ui.collectionTitle).focus({ preventScroll: true });
+  }
 
   function resetCardTilt(slot) {
     if (mouseTiltSlot === slot) mouseTiltSlot = null;
@@ -278,7 +423,7 @@
   }
 
   function handleDeviceOrientation(event) {
-    if (!orientationSlot || mode !== MODES.REVEALED || tiltSuspended || document.hidden || reducedMotion.matches || mouseTiltSlot) return;
+    if (!orientationSlot || view !== 'deck' || mode !== MODES.REVEALED || tiltSuspended || document.hidden || reducedMotion.matches || mouseTiltSlot) return;
     if (!Number.isFinite(event.beta) || !Number.isFinite(event.gamma)) return;
     const pose = { beta: event.beta, gamma: event.gamma, angle: screenAngle() };
     // Calibrate in the user's current grip. Euler branch changes should recenter,
@@ -315,7 +460,7 @@
 
   function canUseOrientationTilt() {
     return window.isSecureContext && window.DeviceOrientationEvent && (coarsePointer.matches || navigator.maxTouchPoints > 0)
-      && mode === MODES.REVEALED && !document.hidden && !tiltSuspended && !reducedMotion.matches;
+      && view === 'deck' && mode === MODES.REVEALED && !document.hidden && !tiltSuspended && !reducedMotion.matches;
   }
 
   async function syncOrientationTilt() {
@@ -356,18 +501,13 @@
             <span class="card-back-edition"><span>EST.</span><span>MMXXVI</span></span>
           </span>
         </span>
-        <span class="card-face card-front" aria-hidden="true">
-          <span class="card-front-top"><span>THE MINDSET COLLECTION</span><span class="card-number"></span></span>
-          <span class="card-quote-wrap"><span class="quote-mark" aria-hidden="true">“</span><span class="card-quote" role="blockquote"></span></span>
-          <span class="card-front-rule"></span>
-          <span class="card-front-bottom"><span>HUSTLE CARDS</span><span class="card-front-symbol" aria-hidden="true">✦</span></span>
-        </span>
+        ${frontMarkup()}
       </span>
     </button></div>`;
     const button = slot.querySelector('.card-button');
     button.addEventListener('click', () => draw(card, slot));
     button.addEventListener('pointermove', (event) => {
-      if (mode !== MODES.IDLE || event.pointerType === 'touch' || reducedMotion.matches) return;
+      if (view !== 'deck' || mode !== MODES.IDLE || event.pointerType === 'touch' || reducedMotion.matches) return;
       const rect = button.getBoundingClientRect();
       button.style.setProperty('--pointer-x', `${((event.clientX - rect.left) / rect.width) * 100}%`);
       button.style.setProperty('--pointer-y', `${((event.clientY - rect.top) / rect.height) * 100}%`);
@@ -380,7 +520,7 @@
     // Listen here because the revealed card's button is disabled after drawing.
     slot.addEventListener('pointermove', (event) => {
       if (event.pointerType !== 'mouse') return;
-      if (mode !== MODES.REVEALED || !mouseHover.matches || reducedMotion.matches || tiltSuspended || document.hidden) {
+      if (view !== 'deck' || mode !== MODES.REVEALED || !mouseHover.matches || reducedMotion.matches || tiltSuspended || document.hidden) {
         resetCardTilt(slot);
         return;
       }
@@ -446,12 +586,14 @@
     if (cards.length === 0) {
       setMode(MODES.COMPLETED);
       announce("You've drawn them all. 50 cards. 50 reminders to keep going.");
-      if (focus && !ui.newDeck.hidden) ui.newDeck.focus({ preventScroll: true });
+      if (focus && view === 'deck') {
+        (ui.newDeck.hidden ? ui.openCollection : ui.newDeck).focus({ preventScroll: true });
+      }
       return;
     }
     cards.forEach((card, index) => ui.deck.append(cardElement(card, index, cards.length)));
     setMode(MODES.IDLE);
-    if (focus && isAvailable()) ui.deck.querySelector('.card-button').focus({ preventScroll: true });
+    if (focus && view === 'deck' && isAvailable()) ui.deck.querySelector('.card-button').focus({ preventScroll: true });
   }
 
   function restoreLastCard() {
@@ -460,11 +602,11 @@
     if (!lastCard) return renderRound();
     ui.deck.replaceChildren(cardElement(lastCard, 0, 1, true));
     setMode(MODES.REVEALED);
-    announce(`Your last card, number ${lastCard.id}. ${lastCard.quote}`);
+    if (view === 'deck') announce(`Your last card, number ${lastCard.id}. ${lastCard.quote}`);
   }
 
   async function draw(card, selected) {
-    if (mode !== MODES.IDLE || !isAvailable()) return;
+    if (view !== 'deck' || mode !== MODES.IDLE || !isAvailable()) return;
     setMode(MODES.ANIMATING);
     const token = ++operation;
     ui.deck.querySelectorAll('.card-button').forEach((button) => { button.disabled = true; });
@@ -484,10 +626,12 @@
         announce('That card was drawn in another tab. Choose a fresh card.');
         return false;
       }
-      state.drawnIds.push(card.id);
+      state.drawnIds = discoveries(state.drawnIds, [card.id]);
+      state.discoveredIds = discoveries(state.discoveredIds, [card.id]);
       state.lastDrawnId = card.id;
       state.lastDrawnAt = Date.now();
       persist(); // Save before any reveal animation, even when the tab closes mid-flip.
+      renderCollection();
       updateAvailability();
       fillQuote(selected, card);
       return true;
@@ -536,6 +680,7 @@
     finishCard(selected, card);
     setMode(MODES.REVEALED);
     announce(`Card ${card.id} of ${CARDS.length}. ${card.quote}`);
+    if (view !== 'deck') return;
     if (!ui.actions.hidden) ui.again.focus({ preventScroll: true });
     else {
       selected.tabIndex = -1;
@@ -544,7 +689,7 @@
   }
 
   function openReset() {
-    if (mode !== MODES.COMPLETED || ui.dialog.open) return;
+    if (view !== 'deck' || mode !== MODES.COMPLETED || ui.dialog.open) return;
     state = mergeState(latestStoredState());
     updateAvailability();
     if (!isAvailable() || state.drawnIds.length !== CARDS.length) return;
@@ -559,7 +704,7 @@
   }
 
   ui.again.addEventListener('click', () => {
-    if (mode === MODES.REVEALED) {
+    if (view === 'deck' && mode === MODES.REVEALED) {
       state = mergeState(latestStoredState());
       if (!isAvailable() && state.drawnIds.length < CARDS.length) {
         updateAvailability();
@@ -568,6 +713,15 @@
       renderRound(true);
       if (mode === MODES.IDLE) announce('A fresh choice. Choose your card.');
     }
+  });
+  ui.openCollection.addEventListener('click', openCollection);
+  ui.closeCollection.addEventListener('click', closeCollection);
+  ui.detailBack.addEventListener('click', closeDetail);
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || ui.dialog.open || view === 'deck') return;
+    event.preventDefault();
+    if (view === 'detail') closeDetail();
+    else closeCollection();
   });
   ui.newDeck.addEventListener('click', openReset);
   ui.cancel.addEventListener('click', closeReset);
@@ -594,8 +748,10 @@
         return;
       }
       cancelAnimations();
-      try { if (storageAvailable) storage.removeItem(STORAGE_KEY); } catch { temporaryStorage(); }
-      state = emptyState();
+      const { discoveredIds, deckGeneration } = state;
+      state = { ...emptyState(), discoveredIds, deckGeneration: deckGeneration + 1 };
+      persist();
+      renderCollection();
       ui.dialog.close();
       renderRound(true);
       announce('A new deck. All 50 cards are waiting.');
@@ -614,9 +770,12 @@
   function refreshFromStorage() {
     const incoming = latestStoredState();
     const merged = mergeState(incoming);
-    const changed = merged.deckId !== state.deckId || merged.lastDrawnId !== state.lastDrawnId || merged.lastDrawnAt !== state.lastDrawnAt || merged.drawnIds.join(',') !== state.drawnIds.join(',');
+    const changed = merged.deckId !== state.deckId || merged.deckGeneration !== state.deckGeneration || merged.lastDrawnId !== state.lastDrawnId || merged.lastDrawnAt !== state.lastDrawnAt || merged.drawnIds.join(',') !== state.drawnIds.join(',');
     state = merged;
-    if (merged.drawnIds.length > incoming.drawnIds.length || merged.lastDrawnAt !== incoming.lastDrawnAt) persist();
+    // Reconcile monotonic discoveries (including stale tabs from earlier decks).
+    // Compare canonical arrays to avoid storage-event ping-pong between tabs.
+    if (JSON.stringify(merged) !== JSON.stringify(incoming)) persist();
+    renderCollection();
     if (!changed) {
       updateAvailability();
       return;
@@ -669,6 +828,8 @@
   });
   window.setInterval(updateAvailability, 1000);
 
+  setView('deck');
+  renderCollection();
   if (state.lastDrawnId !== null) restoreLastCard();
   else renderRound();
 })();
